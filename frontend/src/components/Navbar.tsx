@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChartBar, SignOut } from "@phosphor-icons/react";
+import { removeStoredRole } from "@/lib/storage";
 
 interface Props {
   role: "professor" | "ies";
@@ -11,7 +12,7 @@ export default function Navbar({ role }: Props) {
   const router = useRouter();
 
   function logout() {
-    localStorage.removeItem("role");
+    removeStoredRole();
     router.push("/");
   }
 

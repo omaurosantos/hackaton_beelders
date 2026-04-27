@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import StatCard from "@/components/StatCard";
 import RiskBadge from "@/components/RiskBadge";
 import { fetchDashboardProfessor, fetchStudents, uploadCSV } from "@/lib/api";
+import { getStoredRole } from "@/lib/storage";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Users, Warning, TrendUp, CheckCircle, UploadSimple, FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
 
@@ -45,7 +46,7 @@ export default function ProfessorDashboard() {
   }, [selectedCourse]);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && localStorage.getItem("role") !== "professor") {
+    if (getStoredRole() !== "professor") {
       router.push("/"); return;
     }
     load();

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChalkboardTeacher, Buildings, ArrowRight, ChartBar } from "@phosphor-icons/react";
+import { setStoredRole } from "@/lib/storage";
 
 const PROFILES = [
   {
@@ -24,7 +25,7 @@ export default function LoginPage() {
 
   function handleLogin() {
     if (!role) return;
-    localStorage.setItem("role", role);
+    setStoredRole(role);
     router.push(`/dashboard/${role}`);
   }
 

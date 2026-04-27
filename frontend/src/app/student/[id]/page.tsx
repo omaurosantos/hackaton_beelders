@@ -5,6 +5,7 @@ import { RadialBarChart, RadialBar, ResponsiveContainer } from "recharts";
 import Navbar from "@/components/Navbar";
 import RiskBadge from "@/components/RiskBadge";
 import { fetchStudent } from "@/lib/api";
+import { getStoredRole } from "@/lib/storage";
 import { ArrowLeft } from "lucide-react";
 import { UserCircle } from "@phosphor-icons/react";
 
@@ -28,10 +29,24 @@ interface StudentDetail {
   debtor: number;
   tuition_fees_up_to_date: number;
   scholarship_holder: number;
+  curricular_units_1st_sem_enrolled: number;
   curricular_units_1st_sem_approved: number;
   curricular_units_1st_sem_grade: number;
+  curricular_units_2nd_sem_enrolled: number;
   curricular_units_2nd_sem_approved: number;
   curricular_units_2nd_sem_grade: number;
+}
+
+const GRADE_MAX = 20;
+const GRADE_ATTENTION_THRESHOLD = 10;
+
+function formatNumber(value: number, maximumFractionDigits = 1) {
+  return value.toLocaleString("pt-BR", { maximumFractionDigits });
+}
+
+function approvalRate(approved: number, enrolled: number) {
+  if (!enrolled) return 0;
+  return Math.round((approved / enrolled) * 100);
 }
 
 function ScoreGauge({ score }: { score: number }) {
@@ -71,8 +86,7 @@ export default function StudentDetailPage() {
   const [role, setRole] = useState<string>("professor");
 
   useEffect(() => {
-    const r = typeof window !== "undefined" ? localStorage.getItem("role") ?? "professor" : "professor";
-    setRole(r);
+    setRole(getStoredRole() ?? "professor");
     if (!params.id) return;
     fetchStudent(Number(params.id)).then(setStudent).catch(console.error);
   }, [params.id]);
@@ -84,6 +98,24 @@ export default function StudentDetailPage() {
       </div>
     );
   }
+
+  const semesters = [
+    {
+      label: "1º semestre",
+      enrolled: student.curricular_units_1st_sem_enrolled,
+      approved: student.curricular_units_1st_sem_approved,
+      grade: student.curricular_units_1st_sem_grade,
+    },
+    {
+      label: "2º semestre",
+      enrolled: student.curricular_units_2nd_sem_enrolled,
+      approved: student.curricular_units_2nd_sem_approved,
+      grade: student.curricular_units_2nd_sem_grade,
+    },
+  ];
+  const totalEnrolled = semesters.reduce((sum, semester) => sum + semester.enrolled, 0);
+  const totalApproved = semesters.reduce((sum, semester) => sum + semester.approved, 0);
+  const averageGrade = semesters.reduce((sum, semester) => sum + semester.grade, 0) / semesters.length;
 
   return (
     <div className="min-h-screen bg-fog-50">
@@ -143,20 +175,73 @@ export default function StudentDetailPage() {
           <div className="lg:col-span-2 flex flex-col gap-5">
             {/* Academic performance */}
             <div className="z-card">
-              <h3 className="font-semibold text-fog-900 mb-4">Desempenho Acadêmico</h3>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: "Disciplinas aprovadas (1º sem)", value: student.curricular_units_1st_sem_approved },
-                  { label: "Nota média (1º sem)", value: student.curricular_units_1st_sem_grade },
-                  { label: "Disciplinas aprovadas (2º sem)", value: student.curricular_units_2nd_sem_approved },
-                  { label: "Nota média (2º sem)", value: student.curricular_units_2nd_sem_grade },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-lg p-3"
-                    style={{ background: "var(--fog-50)" }}>
-                    <p className="text-xs text-fog-500">{item.label}</p>
-                    <p className="text-2xl font-bold text-fog-900 mt-1">{item.value}</p>
-                  </div>
-                ))}
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
+                <div>
+                  <h3 className="font-semibold text-fog-900">Desempenho Acadêmico</h3>
+                  <p className="text-xs text-fog-400 mt-1">
+                    Notas na escala 0 a {GRADE_MAX}; ponto de atenção abaixo de {GRADE_ATTENTION_THRESHOLD}/{GRADE_MAX}.
+                  </p>
+                </div>
+                <span className="z-badge z-badge--neutral self-start">
+                  Média geral {formatNumber(averageGrade)}/{GRADE_MAX}
+                </span>
+              </div>
+
+              <div className="grid sm:grid-cols-3 rounded-lg overflow-hidden mb-4"
+                style={{ border: "1px solid var(--fog-100)" }}>
+                <div className="p-3 border-b sm:border-b-0" style={{ borderColor: "var(--fog-100)" }}>
+                  <p className="text-xs text-fog-500">Disciplinas matriculadas</p>
+                  <p className="text-2xl font-bold text-fog-900 mt-1">{totalEnrolled}</p>
+                </div>
+                <div className="p-3 border-b sm:border-b-0 sm:border-l" style={{ borderColor: "var(--fog-100)" }}>
+                  <p className="text-xs text-fog-500">Disciplinas aprovadas</p>
+                  <p className="text-2xl font-bold text-fog-900 mt-1">
+                    {totalApproved} de {totalEnrolled}
+                  </p>
+                </div>
+                <div className="p-3 sm:border-l" style={{ borderColor: "var(--fog-100)" }}>
+                  <p className="text-xs text-fog-500">Taxa de aprovação</p>
+                  <p className="text-2xl font-bold text-fog-900 mt-1">
+                    {approvalRate(totalApproved, totalEnrolled)}%
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs font-semibold text-fog-500 uppercase tracking-wide"
+                      style={{ background: "var(--fog-50)" }}>
+                      <th className="px-3 py-2.5 text-left">Semestre</th>
+                      <th className="px-3 py-2.5 text-center">Matriculadas</th>
+                      <th className="px-3 py-2.5 text-center">Aprovadas</th>
+                      <th className="px-3 py-2.5 text-center">Aprovação</th>
+                      <th className="px-3 py-2.5 text-center">Nota média</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {semesters.map((semester) => {
+                      const rate = approvalRate(semester.approved, semester.enrolled);
+                      const gradeNeedsAttention = semester.grade < GRADE_ATTENTION_THRESHOLD;
+
+                      return (
+                        <tr key={semester.label} className="border-t" style={{ borderColor: "var(--fog-100)" }}>
+                          <td className="px-3 py-3 font-semibold text-fog-900">{semester.label}</td>
+                          <td className="px-3 py-3 text-center text-fog-700">{semester.enrolled}</td>
+                          <td className="px-3 py-3 text-center text-fog-700">
+                            {semester.approved} de {semester.enrolled}
+                          </td>
+                          <td className="px-3 py-3 text-center text-fog-700">{rate}%</td>
+                          <td className="px-3 py-3 text-center">
+                            <span className={gradeNeedsAttention ? "z-badge z-badge--warning" : "z-badge z-badge--success"}>
+                              {formatNumber(semester.grade)}/{GRADE_MAX}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
 

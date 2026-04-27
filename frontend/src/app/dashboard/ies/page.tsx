@@ -16,6 +16,7 @@ import {
 import Navbar from "@/components/Navbar";
 import StatCard from "@/components/StatCard";
 import { fetchDashboardIES, fetchModelMetrics } from "@/lib/api";
+import { getStoredRole } from "@/lib/storage";
 import { Users, Warning, TrendUp, CheckCircle } from "@phosphor-icons/react";
 
 interface CourseRow {
@@ -97,7 +98,7 @@ export default function IESDashboard() {
   const [metricsError, setMetricsError] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && localStorage.getItem("role") !== "ies") {
+    if (getStoredRole() !== "ies") {
       router.push("/");
       return;
     }

@@ -64,8 +64,10 @@ class StudentOut(BaseModel):
     debtor: int
     tuition_fees_up_to_date: int
     scholarship_holder: int
+    curricular_units_1st_sem_enrolled: int
     curricular_units_1st_sem_approved: int
     curricular_units_1st_sem_grade: float
+    curricular_units_2nd_sem_enrolled: int
     curricular_units_2nd_sem_approved: int
     curricular_units_2nd_sem_grade: float
 
@@ -155,8 +157,10 @@ def get_student(student_id: int, db: Session = Depends(get_db)):
         "debtor": student.debtor,
         "tuition_fees_up_to_date": student.tuition_fees_up_to_date,
         "scholarship_holder": student.scholarship_holder,
+        "curricular_units_1st_sem_enrolled": student.curricular_units_1st_sem_enrolled,
         "curricular_units_1st_sem_approved": student.curricular_units_1st_sem_approved,
         "curricular_units_1st_sem_grade": student.curricular_units_1st_sem_grade,
+        "curricular_units_2nd_sem_enrolled": student.curricular_units_2nd_sem_enrolled,
         "curricular_units_2nd_sem_approved": student.curricular_units_2nd_sem_approved,
         "curricular_units_2nd_sem_grade": student.curricular_units_2nd_sem_grade,
     }
@@ -189,8 +193,10 @@ def list_students(
             "debtor": s.debtor,
             "tuition_fees_up_to_date": s.tuition_fees_up_to_date,
             "scholarship_holder": s.scholarship_holder,
+            "curricular_units_1st_sem_enrolled": s.curricular_units_1st_sem_enrolled,
             "curricular_units_1st_sem_approved": s.curricular_units_1st_sem_approved,
             "curricular_units_1st_sem_grade": s.curricular_units_1st_sem_grade,
+            "curricular_units_2nd_sem_enrolled": s.curricular_units_2nd_sem_enrolled,
             "curricular_units_2nd_sem_approved": s.curricular_units_2nd_sem_approved,
             "curricular_units_2nd_sem_grade": s.curricular_units_2nd_sem_grade,
         })
