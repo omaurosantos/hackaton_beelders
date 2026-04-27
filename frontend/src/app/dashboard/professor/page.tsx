@@ -6,7 +6,7 @@ import StatCard from "@/components/StatCard";
 import RiskBadge from "@/components/RiskBadge";
 import { fetchDashboardProfessor, fetchStudents, uploadCSV } from "@/lib/api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Users, Warning, TrendUp, CheckCircle, UploadSimple, FunnelSimple } from "@phosphor-icons/react";
+import { Users, Warning, TrendUp, CheckCircle, UploadSimple, FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
 
 interface CourseOption { id: number; name: string; period: string; }
 interface DashboardSummary {
@@ -31,6 +31,7 @@ export default function ProfessorDashboard() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [nameFilter, setNameFilter] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -50,7 +51,7 @@ export default function ProfessorDashboard() {
     load();
   }, [load, router]);
 
-  useEffect(() => { setPage(1); }, [riskFilter, selectedCourse]);
+  useEffect(() => { setPage(1); }, [riskFilter, selectedCourse, nameFilter]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -69,9 +70,10 @@ export default function ProfessorDashboard() {
     );
   }
 
-  const filtered = riskFilter === "todos"
-    ? allStudents
-    : allStudents.filter((s) => s.risk_level === riskFilter);
+  const nameQuery = nameFilter.trim().toLowerCase();
+  const filtered = allStudents
+    .filter((s) => riskFilter === "todos" || s.risk_level === riskFilter)
+    .filter((s) => !nameQuery || s.name.toLowerCase().includes(nameQuery));
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const gradeAvg = (s: Student) =>
@@ -160,20 +162,36 @@ export default function ProfessorDashboard() {
         <div className="bg-white rounded-lg overflow-hidden" style={{ boxShadow: "var(--shadow-sm)" }}>
           {/* Table header */}
           <div className="px-4 sm:px-5 py-3 sm:py-4" style={{ borderBottom: "1px solid var(--fog-100)" }}>
-            <div className="flex items-center justify-between gap-3 mb-3 sm:mb-0">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex items-center gap-2 shrink-0">
                 <h3 className="font-semibold text-fog-900 text-sm sm:text-base">Lista de Alunos</h3>
                 <span className="z-badge z-badge--neutral">{filtered.length}</span>
               </div>
+
+              {/* Search input */}
+              <div className="relative flex-1">
+                <MagnifyingGlass size={14} weight="bold"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ color: "var(--fg-muted)" }} />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome..."
+                  value={nameFilter}
+                  onChange={(e) => setNameFilter(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg bg-white text-fog-900 placeholder-fog-400 outline-none"
+                  style={{ border: "1.5px solid var(--fog-200)", height: 36 }}
+                />
+              </div>
+
               {/* Mobile: toggle filters button */}
-              <button className="sm:hidden z-btn z-btn--sm flex items-center gap-1.5"
+              <button className="sm:hidden z-btn z-btn--sm flex items-center gap-1.5 self-start"
                 style={{ background: "var(--fog-100)", color: "var(--fg-muted)" }}
                 onClick={() => setShowFilters(v => !v)}>
                 <FunnelSimple size={14} weight="bold" />
                 Filtrar
               </button>
               {/* Desktop: inline filters */}
-              <div className="hidden sm:flex gap-2">
+              <div className="hidden sm:flex gap-2 shrink-0">
                 {FILTERS.map(({ key, label, count }) => (
                   <button key={key} onClick={() => setRiskFilter(key)}
                     className="z-btn z-btn--sm"
