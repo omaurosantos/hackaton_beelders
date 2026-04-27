@@ -100,13 +100,25 @@ export default function IESDashboard() {
           <div className="lg:col-span-2 z-card p-4 sm:p-6">
             <h3 className="font-semibold text-fog-900 mb-4 text-sm sm:text-base">Taxa de Risco por Curso (%)</h3>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={data.by_course} layout="vertical" margin={{ left: 0, right: 8 }}>
+              <BarChart
+                data={data.by_course.map((c) => ({
+                  ...c,
+                  alto_pct: c.total ? Math.round((c.alto / c.total) * 100) : 0,
+                  medio_pct: c.total ? Math.round((c.medio / c.total) * 100) : 0,
+                  baixo_pct: c.total ? Math.round((c.baixo / c.total) * 100) : 0,
+                }))}
+                layout="vertical"
+                margin={{ left: 0, right: 8 }}
+              >
                 <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10, fill: "#868d95" }} />
                 <YAxis type="category" dataKey="course" width={130} tick={{ fontSize: 10, fill: "#868d95" }} />
-                <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ borderRadius: 8, border: "1px solid #d5d9e0", fontSize: 12 }} />
-                <Bar dataKey="alto" name="Alto" fill="#da1e28" stackId="a" />
-                <Bar dataKey="medio" name="Médio" fill="#ffb005" stackId="a" />
-                <Bar dataKey="baixo" name="Baixo" fill="#198038" stackId="a" radius={[0,4,4,0]} />
+                <Tooltip
+                  formatter={(v: number, name: string) => [`${v}%`, name]}
+                  contentStyle={{ borderRadius: 8, border: "1px solid #d5d9e0", fontSize: 12 }}
+                />
+                <Bar dataKey="alto_pct" name="Alto" fill="#da1e28" stackId="a" />
+                <Bar dataKey="medio_pct" name="Médio" fill="#ffb005" stackId="a" />
+                <Bar dataKey="baixo_pct" name="Baixo" fill="#198038" stackId="a" radius={[0, 4, 4, 0]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
               </BarChart>
             </ResponsiveContainer>
