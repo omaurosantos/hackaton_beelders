@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar";
 import RiskBadge from "@/components/RiskBadge";
 import { fetchStudent } from "@/lib/api";
 import { ArrowLeft } from "lucide-react";
-import { UserCircle, ArrowLeft as PhArrowLeft } from "@phosphor-icons/react";
+import { UserCircle } from "@phosphor-icons/react";
 
 interface Factor {
   feature: string;
