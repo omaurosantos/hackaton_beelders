@@ -1,13 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { RadialBarChart, RadialBar, ResponsiveContainer } from "recharts";
 import Navbar from "@/components/Navbar";
 import RiskBadge from "@/components/RiskBadge";
 import { fetchStudent } from "@/lib/api";
 import { getStoredRole } from "@/lib/storage";
 import { ArrowLeft } from "lucide-react";
-import { UserCircle } from "@phosphor-icons/react";
+import { UserCircle, Info } from "@phosphor-icons/react";
 
 interface Factor {
   feature: string;
@@ -49,32 +48,90 @@ function approvalRate(approved: number, enrolled: number) {
   return Math.round((approved / enrolled) * 100);
 }
 
+const SCORE_TOOLTIP =
+  "Probabilidade estimada de evasão ao longo do curso, calculada por IA com base no desempenho acadêmico e situação financeira. Não indica um semestre específico — reflete o risco acumulado atual e sinaliza urgência de intervenção.";
+
 function ScoreGauge({ score }: { score: number }) {
+  const [showTip, setShowTip] = useState(false);
   const pct = Math.round(score * 100);
   const color = score >= 0.65 ? "#ef4444" : score >= 0.35 ? "#f59e0b" : "#22c55e";
-  const data = [{ name: "score", value: pct, fill: color }];
+
+  const SIZE = 160;
+  const cx = SIZE / 2;
+  const cy = SIZE / 2;
+  const R = 58;
+  const SW = 14;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const pt = (deg: number) => ({
+    x: cx + R * Math.cos(toRad(deg)),
+    y: cy - R * Math.sin(toRad(deg)),
+  });
+
+  const START_DEG = 210;
+  const SPAN_DEG = 240;
+  const endDeg = START_DEG - (pct / 100) * SPAN_DEG;
+
+  const arcPath = (fromDeg: number, toDeg: number) => {
+    const span = Math.abs(fromDeg - toDeg);
+    if (span < 0.5) return "";
+    const from = pt(fromDeg);
+    const to = pt(toDeg);
+    return `M ${from.x} ${from.y} A ${R} ${R} 0 ${span > 180 ? 1 : 0} 0 ${to.x} ${to.y}`;
+  };
 
   return (
-    <div className="relative flex items-center justify-center" style={{ height: 160 }}>
-      <ResponsiveContainer width={160} height={160}>
-        <RadialBarChart
-          cx="50%"
-          cy="50%"
-          innerRadius={50}
-          outerRadius={70}
-          startAngle={210}
-          endAngle={-30}
-          data={data}
-        >
-          <RadialBar dataKey="value" cornerRadius={6} background={{ fill: "#f3f4f6" }} />
-        </RadialBarChart>
-      </ResponsiveContainer>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-bold" style={{ color }}>
-          {pct}%
-        </span>
-        <span className="text-xs text-gray-400">score</span>
+    <div className="relative flex flex-col items-center gap-1">
+      <div className="relative" style={{ width: SIZE, height: SIZE }}>
+        <svg width={SIZE} height={SIZE}>
+          <path d={arcPath(START_DEG, START_DEG - SPAN_DEG)} fill="none" stroke="#f3f4f6" strokeWidth={SW} strokeLinecap="round" />
+          {pct > 0 && (
+            <path d={arcPath(START_DEG, endDeg)} fill="none" stroke={color} strokeWidth={SW} strokeLinecap="round" />
+          )}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-3xl font-bold" style={{ color }}>{pct}%</span>
+          <div className="flex items-center gap-1 mt-0.5">
+            <span className="text-xs text-gray-400">score de evasão</span>
+            <button
+              onMouseEnter={() => setShowTip(true)}
+              onMouseLeave={() => setShowTip(false)}
+              onFocus={() => setShowTip(true)}
+              onBlur={() => setShowTip(false)}
+              className="text-gray-400 hover:text-gray-600 outline-none"
+              aria-label="O que é o score?"
+            >
+              <Info size={13} weight="bold" />
+            </button>
+          </div>
+        </div>
       </div>
+      {showTip && (
+        <div
+          className="absolute z-10 rounded-lg p-3 text-xs leading-relaxed shadow-lg"
+          style={{
+            top: SIZE + 4,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 260,
+            background: "var(--fog-900)",
+            color: "white",
+          }}
+        >
+          {SCORE_TOOLTIP}
+          <div
+            className="absolute"
+            style={{
+              top: -5,
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: 10,
+              height: 10,
+              background: "var(--fog-900)",
+              clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -144,7 +201,9 @@ export default function StudentDetailPage() {
               <p className="text-xs text-fog-400 mt-1">{student.course} · {student.period}</p>
             </div>
 
-            <ScoreGauge score={student.risk_score} />
+            <div className="relative w-full flex justify-center">
+              <ScoreGauge score={student.risk_score} />
+            </div>
 
             <div className="text-center">
               <p className="text-xs text-fog-500 mb-1.5">Nível de risco</p>
