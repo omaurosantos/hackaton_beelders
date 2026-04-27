@@ -67,6 +67,7 @@ Hackaton/
 │   ├── seed.py           # Popula o banco com dados sintéticos
 │   ├── dataset.csv       # Dataset original (4424 linhas, universidade portuguesa)
 │   ├── dropout_model.pkl # Modelo serializado (gerado automaticamente)
+│   ├── model_metrics.json # Métricas de validação do modelo (gerado automaticamente)
 │   ├── dropout.db        # Banco SQLite
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -153,6 +154,20 @@ Entrada (21 features numéricas)
 
 `class_weight="balanced"` compensa o desbalanceamento entre Dropout e Graduate no dataset.
 
+### Validação do modelo
+Durante o treino, o dataset filtrado é separado em split 80/20 estratificado (`random_state=42`).
+O modelo é treinado no conjunto de treino e avaliado no conjunto de teste. As métricas são salvas em
+`backend/model_metrics.json` e expostas em `GET /model/metrics`.
+
+Métricas calculadas:
+- ROC AUC
+- Precision
+- Recall
+- F1-score
+- Accuracy
+- Matriz de confusão
+- Comparação de thresholds (`0.35`, `0.50`, `0.65`) com precision, recall, F1 e taxa de alertas
+
 ### Classificação do risco
 | Probabilidade | Nível |
 |---|---|
@@ -161,7 +176,7 @@ Entrada (21 features numéricas)
 | < 0.35 | baixo |
 
 ### Serialização
-O modelo treinado é salvo em `backend/dropout_model.pkl` via `joblib`. Na primeira vez que o servidor sobe sem o arquivo, ele treina automaticamente a partir de `dataset.csv`.
+O modelo treinado é salvo em `backend/dropout_model.pkl` via `joblib`, e as métricas ficam em `backend/model_metrics.json`. Na primeira vez que o servidor sobe sem algum desses arquivos, ele treina automaticamente a partir de `dataset.csv`.
 
 ---
 
@@ -203,6 +218,7 @@ Todos os endpoints têm prefixo raiz `/`. O frontend os acessa via `/api/*` (rew
 | GET | `/students/{id}` | Detalhe de um aluno com fatores explicativos |
 | GET | `/dashboard/professor` | KPIs + lista para a visão professor. Aceita `?course_id=` |
 | GET | `/dashboard/ies` | KPIs + by_course + alertas + trend para visão institucional |
+| GET | `/model/metrics` | Validação do modelo, matriz de confusão e justificativa dos thresholds |
 | GET | `/courses` | Lista de cursos disponíveis |
 | POST | `/upload/csv` | Importa ou atualiza alunos via CSV |
 | GET | `/health` | Health check |

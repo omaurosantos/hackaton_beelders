@@ -3,11 +3,17 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+from datetime import datetime
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 MODEL_PATH = "dropout_model.pkl"
+METRICS_PATH = "model_metrics.json"
+LOW_RISK_THRESHOLD = 0.35
+HIGH_RISK_THRESHOLD = 0.65
 
 FEATURE_COLS = [
     "Marital status",
@@ -58,6 +64,86 @@ FEATURE_LABELS = {
 }
 
 
+def _build_model() -> Pipeline:
+    return Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", LogisticRegression(max_iter=1000, random_state=42, class_weight="balanced")),
+    ])
+
+
+def _round_metric(value: float) -> float:
+    return round(float(value), 4)
+
+
+def _classification_metrics(y_true, y_prob, threshold: float) -> dict:
+    y_pred = (y_prob >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+    return {
+        "threshold": threshold,
+        "precision": _round_metric(precision_score(y_true, y_pred, zero_division=0)),
+        "recall": _round_metric(recall_score(y_true, y_pred, zero_division=0)),
+        "f1": _round_metric(f1_score(y_true, y_pred, zero_division=0)),
+        "accuracy": _round_metric(accuracy_score(y_true, y_pred)),
+        "alert_rate": _round_metric(float(np.mean(y_pred))),
+        "confusion_matrix": {
+            "true_negative": int(tn),
+            "false_positive": int(fp),
+            "false_negative": int(fn),
+            "true_positive": int(tp),
+        },
+    }
+
+
+def _save_metrics(model: Pipeline, X_test, y_test, dataset_size: int, train_size: int) -> None:
+    y_prob = model.predict_proba(X_test)[:, 1]
+    primary_metrics = _classification_metrics(y_test, y_prob, LOW_RISK_THRESHOLD)
+
+    metrics = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "dataset": {
+            "source": "dataset.csv",
+            "total_rows_after_filter": dataset_size,
+            "train_rows": train_size,
+            "test_rows": int(len(y_test)),
+            "target": "Dropout vs Graduate",
+            "excluded_target": "Enrolled",
+        },
+        "validation": {
+            "split": "80/20 estratificado",
+            "random_state": 42,
+            "roc_auc": _round_metric(roc_auc_score(y_test, y_prob)),
+            **primary_metrics,
+        },
+        "thresholds": {
+            "baixo": {
+                "max_exclusive": LOW_RISK_THRESHOLD,
+                "label": "Baixo risco",
+            },
+            "medio": {
+                "min_inclusive": LOW_RISK_THRESHOLD,
+                "max_exclusive": HIGH_RISK_THRESHOLD,
+                "label": "Médio risco",
+            },
+            "alto": {
+                "min_inclusive": HIGH_RISK_THRESHOLD,
+                "label": "Alto risco",
+            },
+            "justification": (
+                "O corte de 0.35 marca médio ou alto risco para priorizar recall e intervenção precoce. "
+                "Em evasão acadêmica, perder um aluno em risco tende a custar mais do que acompanhar preventivamente "
+                "um aluno que talvez não evadisse. O corte de 0.65 separa casos de alta prioridade."
+            ),
+        },
+        "threshold_analysis": [
+            _classification_metrics(y_test, y_prob, threshold)
+            for threshold in [LOW_RISK_THRESHOLD, 0.5, HIGH_RISK_THRESHOLD]
+        ],
+    }
+
+    with open(METRICS_PATH, "w", encoding="utf-8") as f:
+        json.dump(metrics, f, ensure_ascii=False, indent=2)
+
+
 def train_model(dataset_path: str = "../dataset.csv") -> None:
     df = pd.read_csv(dataset_path)
     # Keep only Dropout vs Graduate (drop Enrolled for binary classification)
@@ -67,22 +153,36 @@ def train_model(dataset_path: str = "../dataset.csv") -> None:
     X = df[FEATURE_COLS].fillna(0)
     y = df["label"]
 
-    model = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", LogisticRegression(max_iter=1000, random_state=42, class_weight="balanced")),
-    ])
-    model.fit(X, y)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y,
+    )
+
+    model = _build_model()
+    model.fit(X_train, y_train)
     joblib.dump(model, MODEL_PATH)
+    _save_metrics(model, X_test, y_test, dataset_size=len(df), train_size=len(X_train))
     print(f"Model trained and saved to {MODEL_PATH}")
+    print(f"Model metrics saved to {METRICS_PATH}")
 
 
 def load_model():
-    if not os.path.exists(MODEL_PATH):
+    if not os.path.exists(MODEL_PATH) or not os.path.exists(METRICS_PATH):
         dataset_path = "../dataset.csv"
         if not os.path.exists(dataset_path):
             dataset_path = "dataset.csv"
         train_model(dataset_path)
     return joblib.load(MODEL_PATH)
+
+
+def load_model_metrics() -> dict:
+    if not os.path.exists(METRICS_PATH):
+        load_model()
+    with open(METRICS_PATH, encoding="utf-8") as f:
+        return json.load(f)
 
 
 _model = None
@@ -101,9 +201,9 @@ def predict_dropout(features: dict) -> dict:
     X = pd.DataFrame([row], columns=FEATURE_COLS)
     prob = float(model.predict_proba(X)[0][1])
 
-    if prob >= 0.65:
+    if prob >= HIGH_RISK_THRESHOLD:
         level = "alto"
-    elif prob >= 0.35:
+    elif prob >= LOW_RISK_THRESHOLD:
         level = "médio"
     else:
         level = "baixo"

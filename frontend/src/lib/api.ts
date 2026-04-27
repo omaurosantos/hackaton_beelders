@@ -15,6 +15,12 @@ export async function fetchDashboardIES() {
   return res.json();
 }
 
+export async function fetchModelMetrics() {
+  const res = await fetch(`${BASE}/model/metrics`);
+  if (!res.ok) throw new Error("Erro ao carregar métricas do modelo");
+  return res.json();
+}
+
 export async function fetchStudents(courseId?: number, riskLevel?: string) {
   const params = new URLSearchParams();
   if (courseId) params.set("course_id", String(courseId));

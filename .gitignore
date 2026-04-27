@@ -4,6 +4,7 @@ backend/__pycache__/
 backend/*.pyc
 backend/dropout.db
 backend/dropout_model.pkl
+backend/model_metrics.json
 
 # Next.js
 frontend/.next/

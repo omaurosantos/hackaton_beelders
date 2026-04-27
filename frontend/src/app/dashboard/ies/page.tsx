@@ -15,7 +15,7 @@ import {
 } from "recharts";
 import Navbar from "@/components/Navbar";
 import StatCard from "@/components/StatCard";
-import { fetchDashboardIES } from "@/lib/api";
+import { fetchDashboardIES, fetchModelMetrics } from "@/lib/api";
 import { Users, Warning, TrendUp, CheckCircle } from "@phosphor-icons/react";
 
 interface CourseRow {
@@ -52,9 +52,49 @@ interface IESData {
   trend: TrendPoint[];
 }
 
+interface ConfusionMatrix {
+  true_negative: number;
+  false_positive: number;
+  false_negative: number;
+  true_positive: number;
+}
+
+interface ThresholdMetric {
+  threshold: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  alert_rate: number;
+}
+
+interface ModelMetrics {
+  dataset: {
+    total_rows_after_filter: number;
+    train_rows: number;
+    test_rows: number;
+  };
+  validation: {
+    roc_auc: number;
+    precision: number;
+    recall: number;
+    f1: number;
+    accuracy: number;
+    threshold: number;
+    confusion_matrix: ConfusionMatrix;
+  };
+  thresholds: {
+    justification: string;
+  };
+  threshold_analysis: ThresholdMetric[];
+}
+
+const pct = (value: number) => `${Math.round(value * 100)}%`;
+
 export default function IESDashboard() {
   const router = useRouter();
   const [data, setData] = useState<IESData | null>(null);
+  const [metrics, setMetrics] = useState<ModelMetrics | null>(null);
+  const [metricsError, setMetricsError] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("role") !== "ies") {
@@ -62,6 +102,12 @@ export default function IESDashboard() {
       return;
     }
     fetchDashboardIES().then(setData).catch(console.error);
+    fetchModelMetrics()
+      .then(setMetrics)
+      .catch((error) => {
+        console.error(error);
+        setMetricsError(true);
+      });
   }, [router]);
 
   if (!data) {
@@ -71,6 +117,15 @@ export default function IESDashboard() {
       </div>
     );
   }
+
+  const validationCards = metrics
+    ? [
+        { label: "ROC AUC", value: metrics.validation.roc_auc.toFixed(2), hint: "separação geral" },
+        { label: "Precision", value: pct(metrics.validation.precision), hint: "alertas corretos" },
+        { label: "Recall", value: pct(metrics.validation.recall), hint: "evasões capturadas" },
+        { label: "F1-score", value: pct(metrics.validation.f1), hint: "equilíbrio" },
+      ]
+    : [];
 
   return (
     <div className="min-h-screen bg-fog-50">
@@ -94,6 +149,109 @@ export default function IESDashboard() {
           <StatCard title="Baixo Risco" value={data.baixo_risco}
             icon={<CheckCircle size={16} weight="bold" />} variant="success" />
         </div>
+
+        {metrics ? (
+          <div className="z-card mb-4 sm:mb-6 p-4 sm:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-5">
+              <div>
+                <h3 className="font-semibold text-fog-900 text-sm sm:text-base">Validação do Modelo</h3>
+                <p className="text-xs text-fog-500 mt-1">
+                  Teste em {metrics.dataset.test_rows} registros, com split 80/20 estratificado.
+                </p>
+              </div>
+              <span className="z-badge z-badge--primary self-start">
+                limiar operacional {pct(metrics.validation.threshold)}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+              {validationCards.map((card) => (
+                <div key={card.label} className="rounded-lg p-3" style={{ background: "var(--fog-50)" }}>
+                  <p className="text-xs font-semibold text-fog-500">{card.label}</p>
+                  <p className="text-2xl font-bold text-fog-900 mt-1">{card.value}</p>
+                  <p className="text-xs text-fog-400 mt-0.5">{card.hint}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid lg:grid-cols-3 gap-4">
+              <div>
+                <p className="text-xs font-semibold text-fog-500 uppercase mb-2">Matriz de confusão</p>
+                <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                  {[
+                    { label: "Verdadeiro negativo", value: metrics.validation.confusion_matrix.true_negative, tone: "neutral" },
+                    { label: "Falso positivo", value: metrics.validation.confusion_matrix.false_positive, tone: "warning" },
+                    { label: "Falso negativo", value: metrics.validation.confusion_matrix.false_negative, tone: "danger" },
+                    { label: "Verdadeiro positivo", value: metrics.validation.confusion_matrix.true_positive, tone: "success" },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-lg p-3"
+                      style={{
+                        background: item.tone === "danger"
+                          ? "#fccfd222"
+                          : item.tone === "warning"
+                          ? "#ffe1a855"
+                          : item.tone === "success"
+                          ? "#9deeb222"
+                          : "var(--fog-50)",
+                      }}>
+                      <p className="text-xl font-bold text-fog-900">{item.value}</p>
+                      <p className="text-fog-500 mt-1">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-fog-500 uppercase mb-2">Troca por limiar</p>
+                <div className="overflow-hidden rounded-lg" style={{ border: "1px solid var(--fog-100)" }}>
+                  <table className="w-full text-xs">
+                    <thead style={{ background: "var(--fog-50)" }}>
+                      <tr className="text-fog-500">
+                        <th className="px-3 py-2 text-left">Limiar</th>
+                        <th className="px-3 py-2 text-center">Prec.</th>
+                        <th className="px-3 py-2 text-center">Recall</th>
+                        <th className="px-3 py-2 text-center">Alertas</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y" style={{ borderColor: "var(--fog-100)" }}>
+                      {metrics.threshold_analysis.map((row) => (
+                        <tr key={row.threshold}>
+                          <td className="px-3 py-2 font-semibold text-fog-900">{pct(row.threshold)}</td>
+                          <td className="px-3 py-2 text-center text-fog-700">{pct(row.precision)}</td>
+                          <td className="px-3 py-2 text-center text-fog-700">{pct(row.recall)}</td>
+                          <td className="px-3 py-2 text-center text-fog-700">{pct(row.alert_rate)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="rounded-lg p-4" style={{ background: "var(--primary-lightest)" }}>
+                <p className="text-xs font-semibold uppercase mb-2" style={{ color: "var(--primary)" }}>
+                  Justificativa dos thresholds
+                </p>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--primary-dark)" }}>
+                  {metrics.thresholds.justification}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="z-card mb-4 sm:mb-6 p-4 sm:p-6">
+            <h3 className="font-semibold text-fog-900 text-sm sm:text-base">Validação do Modelo</h3>
+            <div className="flex items-center gap-3 mt-3">
+              {!metricsError && (
+                <span className="w-5 h-5 rounded-full border-2 border-fog-200 border-t-primary animate-spin shrink-0" />
+              )}
+              <p className="text-sm text-fog-500">
+                {metricsError
+                  ? "Métricas indisponíveis. Publique o backend atualizado para habilitar esta seção."
+                  : "Carregando métricas de validação..."}
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
           {/* Bar chart */}

@@ -34,6 +34,9 @@
 
 ## 4. Dashboard IES (1 min)
 - Voltar, sair e entrar como **IES**
+- Mostrar a seção **Validação do Modelo**: AUC, precision, recall, F1 e matriz de confusão
+- Explicar: *"Priorizamos recall para não deixar alunos em risco passarem despercebidos"*
+- Mostrar a troca por limiar: quanto menor o corte, mais alunos acompanhados preventivamente
 - Mostrar o gráfico de barras horizontal por curso
 - Apontar o curso com maior taxa de risco no gráfico
 - Mostrar os **Alertas automáticos** (cursos acima de 40% em risco)

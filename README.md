@@ -74,6 +74,7 @@ docker-compose up --build
 | POST | `/predict/dropout` | Predição de risco de evasão |
 | GET | `/dashboard/professor` | Métricas da turma |
 | GET | `/dashboard/ies` | Métricas agregadas por curso |
+| GET | `/model/metrics` | Métricas de validação do modelo |
 | GET | `/students` | Lista de alunos (com filtros) |
 | GET | `/students/{id}` | Detalhe do aluno + fatores |
 | POST | `/upload/csv` | Atualizar base via CSV |
@@ -97,7 +98,9 @@ Login na página raiz (`/`) — sem senha, apenas seleção de perfil.
 - Algoritmo: Regressão Logística (scikit-learn)
 - Features: 21 variáveis (acadêmicas, financeiras, demográficas)
 - Dataset: 4424 registros, classes Dropout / Graduate
+- Validação: split 80/20 estratificado, com AUC, precision, recall, F1 e matriz de confusão
 - Saída: score (0–1), nível (baixo/médio/alto), top 5 fatores explicativos
+- Thresholds: baixo < 0,35; médio ≥ 0,35; alto ≥ 0,65
 - Treino automático na primeira execução via `dataset.csv`
 
 ---

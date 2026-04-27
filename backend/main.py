@@ -11,7 +11,7 @@ from sqlalchemy import func
 
 from database import get_db, engine
 from models import Base, Student, Course, PredictionLog
-from ml_model import predict_dropout, features_from_student, FEATURE_COLS
+from ml_model import predict_dropout, features_from_student, FEATURE_COLS, load_model_metrics
 
 Base.metadata.create_all(bind=engine)
 
@@ -123,6 +123,11 @@ def predict_endpoint(req: PredictRequest, db: Session = Depends(get_db)):
         db.commit()
 
     return result
+
+
+@app.get("/model/metrics")
+def model_metrics():
+    return load_model_metrics()
 
 
 # ── Student detail ────────────────────────────────────────────────────────────
