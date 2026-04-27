@@ -308,39 +308,85 @@ def dashboard_ies(db: Session = Depends(get_db)):
 
 # ── CSV Upload ────────────────────────────────────────────────────────────────
 
+def _apply_feature_cols(student: Student, row: dict):
+    for col in FEATURE_COLS:
+        snake = col.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("/", "_")
+        if col in row:
+            try:
+                val = float(row[col])
+                if hasattr(student, snake):
+                    setattr(student, snake, val)
+            except ValueError:
+                pass
+
+
+def _resolve_course(db: Session, course_name: str, period: str) -> int:
+    name = (course_name or "").strip() or "Curso Importado"
+    period = (period or "").strip() or "Manhã"
+    course = db.query(Course).filter(Course.name == name, Course.period == period).first()
+    if not course:
+        course = Course(name=name, period=period)
+        db.add(course)
+        db.flush()
+    return course.id
+
+
 @app.post("/upload/csv")
 async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     content = await file.read()
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
 
-    updated = 0
+    updated = created = skipped = 0
     for row in reader:
         student_id = row.get("id") or row.get("student_id")
-        if not student_id:
-            continue
-        student = db.query(Student).filter(Student.id == int(student_id)).first()
-        if not student:
-            continue
 
-        for col in FEATURE_COLS:
-            snake = col.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("/", "_")
-            if col in row:
-                try:
-                    val = float(row[col])
-                    if hasattr(student, snake):
-                        setattr(student, snake, val)
-                except ValueError:
-                    pass
+        if student_id:
+            student = db.query(Student).filter(Student.id == int(student_id)).first()
+        else:
+            student = None
+
+        if student:
+            _apply_feature_cols(student, row)
+            updated += 1
+        else:
+            name = (row.get("name") or row.get("nome") or "").strip()
+            email = (row.get("email") or "").strip()
+            if not name:
+                skipped += 1
+                continue
+
+            course_id = _resolve_course(db, row.get("course") or row.get("curso"), row.get("period") or row.get("periodo"))
+
+            student = Student(
+                name=name,
+                email=email or f"{name.lower().replace(' ', '.')}@instituicao.edu.br",
+                course_id=course_id,
+            )
+            db.add(student)
+            db.flush()
+            _apply_feature_cols(student, row)
+            created += 1
 
         result = predict_dropout(features_from_student(student))
         student.risk_score = result["score"]
         student.risk_level = result["risk_level"]
         student.updated_at = datetime.utcnow()
-        updated += 1
 
     db.commit()
-    return {"updated": updated, "message": f"{updated} alunos atualizados com sucesso."}
+    parts = []
+    if created:
+        parts.append(f"{created} criado(s)")
+    if updated:
+        parts.append(f"{updated} atualizado(s)")
+    if skipped:
+        parts.append(f"{skipped} ignorado(s) por falta de nome")
+    return {
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "message": ", ".join(parts) + " com sucesso." if parts else "Nenhuma linha processada.",
+    }
 
 
 @app.get("/health")
