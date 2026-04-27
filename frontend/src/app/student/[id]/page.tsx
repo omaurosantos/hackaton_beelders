@@ -272,7 +272,44 @@ export default function StudentDetailPage() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* Mobile: card per semester */}
+              <div className="sm:hidden space-y-3">
+                {semesters.map((semester) => {
+                  const rate = approvalRate(semester.approved, semester.enrolled);
+                  const gradeNeedsAttention = semester.grade < GRADE_ATTENTION_THRESHOLD;
+                  return (
+                    <div key={semester.label} className="rounded-lg p-3"
+                      style={{ border: "1px solid var(--fog-100)" }}>
+                      <p className="font-semibold text-fog-900 text-sm mb-2">{semester.label}</p>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <p className="text-fog-400">Matriculadas</p>
+                          <p className="font-semibold text-fog-900 mt-0.5">{semester.enrolled}</p>
+                        </div>
+                        <div>
+                          <p className="text-fog-400">Aprovadas</p>
+                          <p className="font-semibold text-fog-900 mt-0.5">{semester.approved} de {semester.enrolled}</p>
+                        </div>
+                        <div>
+                          <p className="text-fog-400">Aprovação</p>
+                          <p className="font-semibold text-fog-900 mt-0.5">{rate}%</p>
+                        </div>
+                        <div>
+                          <p className="text-fog-400">Nota média</p>
+                          <div className="mt-0.5">
+                            <span className={gradeNeedsAttention ? "z-badge z-badge--warning" : "z-badge z-badge--success"}>
+                              {formatNumber(semester.grade)}/{GRADE_MAX}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop: table */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs font-semibold text-fog-500 uppercase tracking-wide"
@@ -288,7 +325,6 @@ export default function StudentDetailPage() {
                     {semesters.map((semester) => {
                       const rate = approvalRate(semester.approved, semester.enrolled);
                       const gradeNeedsAttention = semester.grade < GRADE_ATTENTION_THRESHOLD;
-
                       return (
                         <tr key={semester.label} className="border-t" style={{ borderColor: "var(--fog-100)" }}>
                           <td className="px-3 py-3 font-semibold text-fog-900">{semester.label}</td>
@@ -324,10 +360,10 @@ export default function StudentDetailPage() {
                   const isRisk = f.impact === "positivo";
                   return (
                     <div key={i}>
-                      <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-1.5">
                         <span className="text-sm font-medium text-fog-800">{f.feature}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-fog-400">val. {f.value}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-fog-400 hidden sm:inline">val. {f.value}</span>
                           <span className={isRisk ? "z-badge z-badge--danger" : "z-badge z-badge--success"}>
                             {isRisk ? "↑ risco" : "↓ risco"}
                           </span>
