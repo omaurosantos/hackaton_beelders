@@ -1,0 +1,135 @@
+@import url('https://fonts.googleapis.com/css2?family=Red+Hat+Text:wght@400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Fog neutrals */
+    --fog-50:  #f6f7f8;
+    --fog-100: #e8eaee;
+    --fog-200: #d5d9e0;
+    --fog-300: #b9bfc7;
+    --fog-400: #9fa5ad;
+    --fog-500: #868d95;
+    --fog-600: #697077;
+    --fog-700: #50565b;
+    --fog-800: #373d42;
+    --fog-900: #242a2e;
+    --fog-950: #13171a;
+
+    /* Brand — Quero Bolsa */
+    --primary:          #304ffe;
+    --primary-light:    #c9d9ff;
+    --primary-lightest: #edf2ff;
+    --primary-dark:     #143182;
+
+    /* Semantic surfaces */
+    --bg-default:  white;
+    --bg-subtle:   var(--fog-50);
+    --bg-muted:    var(--fog-100);
+    --bg-inverse:  var(--fog-900);
+
+    /* Text */
+    --fg-default: var(--fog-900);
+    --fg-muted:   var(--fog-700);
+    --fg-subtle:  var(--fog-500);
+
+    /* Border */
+    --border-default: var(--fog-200);
+    --border-strong:  var(--fog-300);
+
+    /* Attention */
+    --attention-danger:  #da1e28;
+    --attention-success: #198038;
+    --attention-warning: #ffb005;
+    --attention-info:    #0072c3;
+
+    /* Shadows */
+    --shadow-sm: inset 0 0 0 1px var(--fog-100), 0 8px 16px -8px rgba(19,23,26,.24);
+    --shadow-md: inset 0 0 0 1px var(--fog-100), 0 12px 24px -12px rgba(19,23,26,.24);
+    --shadow-lg: inset 0 0 0 1px var(--fog-100), 0 16px 32px -16px rgba(19,23,26,.24);
+    --shadow-focus: 0 0 0 2px white, 0 0 0 4px rgba(48,79,254,.8);
+
+    --transition: 300ms ease-out;
+  }
+
+  html, body {
+    font-family: 'Red Hat Text', sans-serif;
+    background: var(--bg-subtle);
+    color: var(--fg-default);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0ms !important; }
+  }
+}
+
+@layer components {
+  /* Buttons */
+  .z-btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-full
+           transition-all cursor-pointer select-none border-0 outline-none;
+    min-height: 44px;
+    padding: 0 20px;
+    font-size: 16px;
+    transition: var(--transition);
+  }
+  .z-btn:focus-visible { box-shadow: var(--shadow-focus); }
+  .z-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .z-btn--primary {
+    background: var(--primary);
+    color: white;
+  }
+  .z-btn--primary:hover:not(:disabled) { background: var(--primary-dark); }
+
+  .z-btn--secondary {
+    background: var(--primary-lightest);
+    color: var(--primary);
+  }
+  .z-btn--secondary:hover:not(:disabled) { background: var(--primary-light); }
+
+  .z-btn--ghost {
+    background: transparent;
+    color: var(--fg-muted);
+  }
+  .z-btn--ghost:hover:not(:disabled) { background: var(--bg-muted); }
+
+  .z-btn--sm  { min-height: 36px; padding: 0 16px; font-size: 14px; }
+  .z-btn--lg  { min-height: 52px; padding: 0 28px; font-size: 16px; }
+  .z-btn--block { width: 100%; }
+
+  /* Cards */
+  .z-card {
+    background: var(--bg-default);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+  }
+  .z-card--interactive {
+    cursor: pointer;
+    transition: transform var(--transition), box-shadow var(--transition);
+  }
+  .z-card--interactive:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Badges */
+  .z-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 9999px;
+  }
+  .z-badge--danger  { background: #fccfd2; color: var(--attention-danger); }
+  .z-badge--warning { background: #ffe1a8; color: #8a5c00; }
+  .z-badge--success { background: #9deeb2; color: var(--attention-success); }
+  .z-badge--neutral { background: var(--bg-muted); color: var(--fg-muted); }
+  .z-badge--primary { background: var(--primary-lightest); color: var(--primary); }
+}

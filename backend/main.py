@@ -1,0 +1,347 @@
+import json
+import csv
+import io
+from datetime import datetime
+from typing import Optional
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+
+from database import get_db, engine
+from models import Base, Student, Course, PredictionLog
+from ml_model import predict_dropout, features_from_student, FEATURE_COLS
+
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="EvasãoZero API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── Schemas ──────────────────────────────────────────────────────────────────
+
+class PredictRequest(BaseModel):
+    marital_status: int = 1
+    application_mode: int = 1
+    application_order: int = 1
+    daytime_attendance: int = 1
+    previous_qualification: int = 1
+    displaced: int = 0
+    educational_special_needs: int = 0
+    debtor: int = 0
+    tuition_fees_up_to_date: int = 1
+    gender: int = 1
+    scholarship_holder: int = 0
+    age_at_enrollment: int = 20
+    curricular_units_1st_sem_enrolled: int = 6
+    curricular_units_1st_sem_approved: int = 6
+    curricular_units_1st_sem_grade: float = 12.0
+    curricular_units_2nd_sem_enrolled: int = 6
+    curricular_units_2nd_sem_approved: int = 6
+    curricular_units_2nd_sem_grade: float = 12.0
+    unemployment_rate: float = 10.0
+    inflation_rate: float = 1.0
+    gdp: float = 1.0
+    student_id: Optional[int] = None
+
+
+class StudentOut(BaseModel):
+    id: int
+    name: str
+    email: str
+    course: str
+    period: str
+    risk_score: float
+    risk_level: str
+    age_at_enrollment: int
+    debtor: int
+    tuition_fees_up_to_date: int
+    scholarship_holder: int
+    curricular_units_1st_sem_approved: int
+    curricular_units_1st_sem_grade: float
+    curricular_units_2nd_sem_approved: int
+    curricular_units_2nd_sem_grade: float
+
+    class Config:
+        from_attributes = True
+
+
+# ── Predict ───────────────────────────────────────────────────────────────────
+
+@app.post("/predict/dropout")
+def predict_endpoint(req: PredictRequest, db: Session = Depends(get_db)):
+    features = req.model_dump(exclude={"student_id"})
+    # Map snake_case keys to dataset column names
+    mapped = {
+        "Marital status": features["marital_status"],
+        "Application mode": features["application_mode"],
+        "Application order": features["application_order"],
+        "Daytime/evening attendance": features["daytime_attendance"],
+        "Previous qualification": features["previous_qualification"],
+        "Displaced": features["displaced"],
+        "Educational special needs": features["educational_special_needs"],
+        "Debtor": features["debtor"],
+        "Tuition fees up to date": features["tuition_fees_up_to_date"],
+        "Gender": features["gender"],
+        "Scholarship holder": features["scholarship_holder"],
+        "Age at enrollment": features["age_at_enrollment"],
+        "Curricular units 1st sem (enrolled)": features["curricular_units_1st_sem_enrolled"],
+        "Curricular units 1st sem (approved)": features["curricular_units_1st_sem_approved"],
+        "Curricular units 1st sem (grade)": features["curricular_units_1st_sem_grade"],
+        "Curricular units 2nd sem (enrolled)": features["curricular_units_2nd_sem_enrolled"],
+        "Curricular units 2nd sem (approved)": features["curricular_units_2nd_sem_approved"],
+        "Curricular units 2nd sem (grade)": features["curricular_units_2nd_sem_grade"],
+        "Unemployment rate": features["unemployment_rate"],
+        "Inflation rate": features["inflation_rate"],
+        "GDP": features["gdp"],
+    }
+    result = predict_dropout(mapped)
+
+    if req.student_id:
+        student = db.query(Student).filter(Student.id == req.student_id).first()
+        if student:
+            for k, v in features.items():
+                setattr(student, k, v)
+            student.risk_score = result["score"]
+            student.risk_level = result["risk_level"]
+            student.updated_at = datetime.utcnow()
+
+        log = PredictionLog(
+            student_id=req.student_id,
+            risk_score=result["score"],
+            risk_level=result["risk_level"],
+            factors=json.dumps(result["factors"], ensure_ascii=False),
+        )
+        db.add(log)
+        db.commit()
+
+    return result
+
+
+# ── Student detail ────────────────────────────────────────────────────────────
+
+@app.get("/students/{student_id}")
+def get_student(student_id: int, db: Session = Depends(get_db)):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    features = features_from_student(student)
+    result = predict_dropout(features)
+
+    course = db.query(Course).filter(Course.id == student.course_id).first()
+    return {
+        "id": student.id,
+        "name": student.name,
+        "email": student.email,
+        "course": course.name if course else "",
+        "period": course.period if course else "",
+        "age_at_enrollment": student.age_at_enrollment,
+        "risk_score": result["score"],
+        "risk_level": result["risk_level"],
+        "factors": result["factors"],
+        "debtor": student.debtor,
+        "tuition_fees_up_to_date": student.tuition_fees_up_to_date,
+        "scholarship_holder": student.scholarship_holder,
+        "curricular_units_1st_sem_approved": student.curricular_units_1st_sem_approved,
+        "curricular_units_1st_sem_grade": student.curricular_units_1st_sem_grade,
+        "curricular_units_2nd_sem_approved": student.curricular_units_2nd_sem_approved,
+        "curricular_units_2nd_sem_grade": student.curricular_units_2nd_sem_grade,
+    }
+
+
+@app.get("/students")
+def list_students(
+    course_id: Optional[int] = None,
+    risk_level: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    q = db.query(Student)
+    if course_id:
+        q = q.filter(Student.course_id == course_id)
+    if risk_level:
+        q = q.filter(Student.risk_level == risk_level)
+    students = q.all()
+    result = []
+    for s in students:
+        course = db.query(Course).filter(Course.id == s.course_id).first()
+        result.append({
+            "id": s.id,
+            "name": s.name,
+            "email": s.email,
+            "course": course.name if course else "",
+            "period": course.period if course else "",
+            "age_at_enrollment": s.age_at_enrollment,
+            "risk_score": s.risk_score,
+            "risk_level": s.risk_level,
+            "debtor": s.debtor,
+            "tuition_fees_up_to_date": s.tuition_fees_up_to_date,
+            "scholarship_holder": s.scholarship_holder,
+            "curricular_units_1st_sem_approved": s.curricular_units_1st_sem_approved,
+            "curricular_units_1st_sem_grade": s.curricular_units_1st_sem_grade,
+            "curricular_units_2nd_sem_approved": s.curricular_units_2nd_sem_approved,
+            "curricular_units_2nd_sem_grade": s.curricular_units_2nd_sem_grade,
+        })
+    return result
+
+
+# ── Dashboard Professor ───────────────────────────────────────────────────────
+
+@app.get("/dashboard/professor")
+def dashboard_professor(
+    course_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    q = db.query(Student)
+    if course_id:
+        q = q.filter(Student.course_id == course_id)
+    students = q.all()
+
+    total = len(students)
+    alto = sum(1 for s in students if s.risk_level == "alto")
+    medio = sum(1 for s in students if s.risk_level == "médio")
+    baixo = sum(1 for s in students if s.risk_level == "baixo")
+
+    top10 = sorted(students, key=lambda s: s.risk_score, reverse=True)[:10]
+    courses = {c.id: c for c in db.query(Course).all()}
+
+    top10_out = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "course": courses[s.course_id].name if s.course_id in courses else "",
+            "risk_score": round(s.risk_score, 3),
+            "risk_level": s.risk_level,
+            "debtor": s.debtor,
+            "tuition_up_to_date": s.tuition_fees_up_to_date,
+            "grade_avg": round(
+                (s.curricular_units_1st_sem_grade + s.curricular_units_2nd_sem_grade) / 2, 1
+            ),
+        }
+        for s in top10
+    ]
+
+    courses_list = db.query(Course).all()
+    return {
+        "total": total,
+        "alto_risco": alto,
+        "medio_risco": medio,
+        "baixo_risco": baixo,
+        "taxa_risco": round((alto + medio) / total * 100, 1) if total else 0,
+        "top10_criticos": top10_out,
+        "courses": [{"id": c.id, "name": c.name, "period": c.period} for c in courses_list],
+    }
+
+
+# ── Dashboard IES ─────────────────────────────────────────────────────────────
+
+@app.get("/dashboard/ies")
+def dashboard_ies(db: Session = Depends(get_db)):
+    courses = db.query(Course).all()
+    students = db.query(Student).all()
+
+    total = len(students)
+    alto = sum(1 for s in students if s.risk_level == "alto")
+    medio = sum(1 for s in students if s.risk_level == "médio")
+    baixo = sum(1 for s in students if s.risk_level == "baixo")
+
+    by_course = []
+    for course in courses:
+        cs = [s for s in students if s.course_id == course.id]
+        if not cs:
+            continue
+        c_alto = sum(1 for s in cs if s.risk_level == "alto")
+        c_medio = sum(1 for s in cs if s.risk_level == "médio")
+        c_baixo = sum(1 for s in cs if s.risk_level == "baixo")
+        avg_score = sum(s.risk_score for s in cs) / len(cs)
+        by_course.append({
+            "course": course.name,
+            "period": course.period,
+            "total": len(cs),
+            "alto": c_alto,
+            "medio": c_medio,
+            "baixo": c_baixo,
+            "avg_score": round(avg_score, 3),
+            "taxa_risco": round((c_alto + c_medio) / len(cs) * 100, 1),
+        })
+
+    by_course.sort(key=lambda x: x["taxa_risco"], reverse=True)
+
+    # Alerts: courses with >50% at risk
+    alertas = [
+        {
+            "course": c["course"],
+            "period": c["period"],
+            "taxa_risco": c["taxa_risco"],
+            "alto": c["alto"],
+        }
+        for c in by_course
+        if c["taxa_risco"] > 40
+    ]
+
+    # Trend simulation (last 6 months mocked for demo)
+    trend = [
+        {"month": "Nov", "taxa": round(max(0, (alto + medio) / total * 100 + (i - 5) * 1.5), 1)}
+        for i, month in enumerate(["Nov", "Dez", "Jan", "Fev", "Mar", "Abr"])
+        for month in [month]
+    ] if total else []
+
+    return {
+        "total": total,
+        "alto_risco": alto,
+        "medio_risco": medio,
+        "baixo_risco": baixo,
+        "taxa_risco_geral": round((alto + medio) / total * 100, 1) if total else 0,
+        "by_course": by_course,
+        "alertas": alertas,
+        "trend": trend,
+    }
+
+
+# ── CSV Upload ────────────────────────────────────────────────────────────────
+
+@app.post("/upload/csv")
+async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    content = await file.read()
+    text = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text))
+
+    updated = 0
+    for row in reader:
+        student_id = row.get("id") or row.get("student_id")
+        if not student_id:
+            continue
+        student = db.query(Student).filter(Student.id == int(student_id)).first()
+        if not student:
+            continue
+
+        for col in FEATURE_COLS:
+            snake = col.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("/", "_")
+            if col in row:
+                try:
+                    val = float(row[col])
+                    if hasattr(student, snake):
+                        setattr(student, snake, val)
+                except ValueError:
+                    pass
+
+        result = predict_dropout(features_from_student(student))
+        student.risk_score = result["score"]
+        student.risk_level = result["risk_level"]
+        student.updated_at = datetime.utcnow()
+        updated += 1
+
+    db.commit()
+    return {"updated": updated, "message": f"{updated} alunos atualizados com sucesso."}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
