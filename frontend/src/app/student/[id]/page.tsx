@@ -89,7 +89,7 @@ export default function StudentDetailPage() {
     <div className="min-h-screen bg-fog-50">
       <Navbar role={role as "professor" | "ies"} />
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-8">
         <button
           onClick={() => router.back()}
           className="z-btn z-btn--ghost z-btn--sm flex items-center gap-1.5 mb-6 pl-0"

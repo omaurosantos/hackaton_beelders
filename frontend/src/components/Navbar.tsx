@@ -17,9 +17,10 @@ export default function Navbar({ role }: Props) {
 
   return (
     <nav
-      className="bg-white border-b px-6 py-0 flex items-center justify-between"
+      className="bg-white border-b"
       style={{ borderColor: "var(--border-default)", height: 64 }}
     >
+      <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
       <div className="flex items-center gap-6">
         <Link href={`/dashboard/${role}`} className="flex items-center gap-2">
           <ChartBar size={22} weight="bold" style={{ color: "var(--primary)" }} />
@@ -44,6 +45,7 @@ export default function Navbar({ role }: Props) {
         <SignOut size={16} weight="bold" />
         Sair
       </button>
+      </div>
     </nav>
   );
 }
