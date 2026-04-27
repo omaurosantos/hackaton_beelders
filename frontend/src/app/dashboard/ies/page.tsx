@@ -126,6 +126,7 @@ export default function IESDashboard() {
         { label: "F1-score", value: pct(metrics.validation.f1), hint: "equilíbrio" },
       ]
     : [];
+  const highRiskRate = data.total ? ((data.alto_risco / data.total) * 100).toFixed(0) : "0";
 
   return (
     <div className="min-h-screen bg-fog-50">
@@ -142,7 +143,7 @@ export default function IESDashboard() {
           <StatCard title="Total de Alunos" value={data.total}
             icon={<Users size={16} weight="bold" />} variant="default" />
           <StatCard title="Alto Risco" value={data.alto_risco}
-            sub={`${data.taxa_risco_geral}% de risco geral`}
+            sub={`${highRiskRate}% dos alunos`}
             icon={<Warning size={16} weight="bold" />} variant="danger" />
           <StatCard title="Médio Risco" value={data.medio_risco}
             icon={<TrendUp size={16} weight="bold" />} variant="warning" />
