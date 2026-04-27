@@ -89,17 +89,17 @@ export default function StudentDetailPage() {
     <div className="min-h-screen bg-fog-50">
       <Navbar role={role as "professor" | "ies"} />
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-5 sm:py-8">
         <button
           onClick={() => router.back()}
-          className="z-btn z-btn--ghost z-btn--sm flex items-center gap-1.5 mb-6 pl-0"
+          className="z-btn z-btn--ghost z-btn--sm flex items-center gap-1.5 mb-5 pl-0"
           style={{ color: "var(--fg-muted)" }}
         >
           <ArrowLeft size={15} />
           Voltar
         </button>
 
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left: student info + gauge */}
           <div className="z-card flex flex-col items-center gap-4">
             <div className="w-16 h-16 rounded-full flex items-center justify-center"

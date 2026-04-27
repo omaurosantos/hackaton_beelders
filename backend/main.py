@@ -287,11 +287,12 @@ def dashboard_ies(db: Session = Depends(get_db)):
     ]
 
     # Trend simulation (last 6 months mocked for demo)
+    months = ["Nov", "Dez", "Jan", "Fev", "Mar", "Abr"]
+    base_rate = (alto + medio) / total * 100 if total else 0
     trend = [
-        {"month": "Nov", "taxa": round(max(0, (alto + medio) / total * 100 + (i - 5) * 1.5), 1)}
-        for i, month in enumerate(["Nov", "Dez", "Jan", "Fev", "Mar", "Abr"])
-        for month in [month]
-    ] if total else []
+        {"month": m, "taxa": round(max(0, base_rate + (i - 5) * 1.5), 1)}
+        for i, m in enumerate(months)
+    ]
 
     return {
         "total": total,

@@ -76,65 +76,59 @@ export default function IESDashboard() {
     <div className="min-h-screen bg-fog-50">
       <Navbar role="ies" />
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h2 className="font-bold text-fog-900" style={{ fontSize: 24 }}>Dashboard Institucional</h2>
+      <main className="max-w-7xl mx-auto px-4 py-5 sm:py-8">
+        <div className="mb-5 sm:mb-8">
+          <h2 className="font-bold text-fog-900 text-xl sm:text-2xl">Dashboard Institucional</h2>
           <p className="text-fog-500 text-sm mt-0.5">Visão agregada por curso e período</p>
         </div>
 
         {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6">
           <StatCard title="Total de Alunos" value={data.total}
-            icon={<Users size={18} weight="bold" />} variant="default" />
+            icon={<Users size={16} weight="bold" />} variant="default" />
           <StatCard title="Alto Risco" value={data.alto_risco}
             sub={`${data.taxa_risco_geral}% de risco geral`}
-            icon={<Warning size={18} weight="bold" />} variant="danger" />
+            icon={<Warning size={16} weight="bold" />} variant="danger" />
           <StatCard title="Médio Risco" value={data.medio_risco}
-            icon={<TrendUp size={18} weight="bold" />} variant="warning" />
+            icon={<TrendUp size={16} weight="bold" />} variant="warning" />
           <StatCard title="Baixo Risco" value={data.baixo_risco}
-            icon={<CheckCircle size={18} weight="bold" />} variant="success" />
+            icon={<CheckCircle size={16} weight="bold" />} variant="success" />
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6 mb-6">
+        <div className="grid lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
           {/* Bar chart */}
-          <div className="lg:col-span-2 z-card">
-            <h3 className="font-semibold text-fog-900 mb-4">Taxa de Risco por Curso (%)</h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={data.by_course} layout="vertical" margin={{ left: 10 }}>
-                <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: "#868d95" }} />
-                <YAxis type="category" dataKey="course" width={160} tick={{ fontSize: 11, fill: "#868d95" }} />
+          <div className="lg:col-span-2 z-card p-4 sm:p-6">
+            <h3 className="font-semibold text-fog-900 mb-4 text-sm sm:text-base">Taxa de Risco por Curso (%)</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={data.by_course} layout="vertical" margin={{ left: 0, right: 8 }}>
+                <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10, fill: "#868d95" }} />
+                <YAxis type="category" dataKey="course" width={130} tick={{ fontSize: 10, fill: "#868d95" }} />
                 <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ borderRadius: 8, border: "1px solid #d5d9e0", fontSize: 12 }} />
-                <Bar dataKey="alto" name="Alto" fill="#da1e28" stackId="a" radius={[0,0,0,0]} />
+                <Bar dataKey="alto" name="Alto" fill="#da1e28" stackId="a" />
                 <Bar dataKey="medio" name="Médio" fill="#ffb005" stackId="a" />
                 <Bar dataKey="baixo" name="Baixo" fill="#198038" stackId="a" radius={[0,4,4,0]} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
           {/* Trend */}
-          <div className="z-card">
-            <h3 className="font-semibold text-fog-900 mb-4">Tendência (6 meses)</h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={data.trend}>
+          <div className="z-card p-4 sm:p-6">
+            <h3 className="font-semibold text-fog-900 mb-4 text-sm sm:text-base">Tendência (6 meses)</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={data.trend} margin={{ left: -10, right: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e8eaee" />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#868d95" }} />
                 <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: "#868d95" }} />
                 <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ borderRadius: 8, border: "1px solid #d5d9e0", fontSize: 12 }} />
-                <Line
-                  type="monotone"
-                  dataKey="taxa"
-                  stroke="#304ffe"
-                  strokeWidth={2.5}
-                  dot={{ r: 4, fill: "#304ffe", strokeWidth: 0 }}
-                  name="% em risco"
-                />
+                <Line type="monotone" dataKey="taxa" stroke="#304ffe" strokeWidth={2.5}
+                  dot={{ r: 4, fill: "#304ffe", strokeWidth: 0 }} name="% em risco" />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-6">
+        <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
           {/* Alertas */}
           <div className="z-card">
             <h3 className="font-semibold text-fog-900 mb-4 flex items-center gap-2">
