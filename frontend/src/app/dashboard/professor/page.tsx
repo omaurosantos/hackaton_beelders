@@ -78,7 +78,7 @@ export default function ProfessorDashboard() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const gradeAvg = (s: Student) =>
-    ((s.curricular_units_1st_sem_grade + s.curricular_units_2nd_sem_grade) / 2).toFixed(1);
+    ((s.curricular_units_1st_sem_grade + s.curricular_units_2nd_sem_grade) / 4).toFixed(1);
 
   const FILTERS = [
     { key: "todos", label: "Todos", count: allStudents.length },

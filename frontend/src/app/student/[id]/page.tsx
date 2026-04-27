@@ -37,8 +37,8 @@ interface StudentDetail {
   curricular_units_2nd_sem_grade: number;
 }
 
-const GRADE_MAX = 20;
-const GRADE_ATTENTION_THRESHOLD = 10;
+const GRADE_MAX = 10;
+const GRADE_ATTENTION_THRESHOLD = 5;
 
 function formatNumber(value: number, maximumFractionDigits = 1) {
   return value.toLocaleString("pt-BR", { maximumFractionDigits });
@@ -104,13 +104,13 @@ export default function StudentDetailPage() {
       label: "1º semestre",
       enrolled: student.curricular_units_1st_sem_enrolled,
       approved: student.curricular_units_1st_sem_approved,
-      grade: student.curricular_units_1st_sem_grade,
+      grade: student.curricular_units_1st_sem_grade / 2,
     },
     {
       label: "2º semestre",
       enrolled: student.curricular_units_2nd_sem_enrolled,
       approved: student.curricular_units_2nd_sem_approved,
-      grade: student.curricular_units_2nd_sem_grade,
+      grade: student.curricular_units_2nd_sem_grade / 2,
     },
   ];
   const totalEnrolled = semesters.reduce((sum, semester) => sum + semester.enrolled, 0);
