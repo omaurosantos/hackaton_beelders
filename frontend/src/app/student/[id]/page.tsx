@@ -76,7 +76,7 @@ function ScoreGauge({ score }: { score: number }) {
     if (span < 0.5) return "";
     const from = pt(fromDeg);
     const to = pt(toDeg);
-    return `M ${from.x} ${from.y} A ${R} ${R} 0 ${span > 180 ? 1 : 0} 0 ${to.x} ${to.y}`;
+    return `M ${from.x} ${from.y} A ${R} ${R} 0 ${span > 180 ? 1 : 0} 1 ${to.x} ${to.y}`;
   };
 
   return (
