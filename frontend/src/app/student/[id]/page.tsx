@@ -88,28 +88,30 @@ function ScoreGauge({ score }: { score: number }) {
             <path d={arcPath(START_DEG, endDeg)} fill="none" stroke={color} strokeWidth={SW} strokeLinecap="round" />
           )}
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center" style={{ paddingBottom: 24 }}>
           <span className="text-3xl font-bold" style={{ color }}>{pct}%</span>
-          <div className="flex items-center gap-1 mt-0.5">
-            <span className="text-xs text-gray-400">score de evasão</span>
-            <button
-              onMouseEnter={() => setShowTip(true)}
-              onMouseLeave={() => setShowTip(false)}
-              onFocus={() => setShowTip(true)}
-              onBlur={() => setShowTip(false)}
-              className="text-gray-400 hover:text-gray-600 outline-none"
-              aria-label="O que é o score?"
-            >
-              <Info size={13} weight="bold" />
-            </button>
-          </div>
         </div>
       </div>
+
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-gray-400">score de evasão</span>
+        <button
+          onMouseEnter={() => setShowTip(true)}
+          onMouseLeave={() => setShowTip(false)}
+          onFocus={() => setShowTip(true)}
+          onBlur={() => setShowTip(false)}
+          className="text-gray-400 hover:text-gray-600 outline-none"
+          aria-label="O que é o score?"
+        >
+          <Info size={13} weight="bold" />
+        </button>
+      </div>
+
       {showTip && (
         <div
           className="absolute z-10 rounded-lg p-3 text-xs leading-relaxed shadow-lg"
           style={{
-            top: SIZE + 4,
+            top: "calc(100% + 8px)",
             left: "50%",
             transform: "translateX(-50%)",
             width: 260,
@@ -117,7 +119,6 @@ function ScoreGauge({ score }: { score: number }) {
             color: "white",
           }}
         >
-          {SCORE_TOOLTIP}
           <div
             className="absolute"
             style={{
@@ -130,6 +131,7 @@ function ScoreGauge({ score }: { score: number }) {
               clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
             }}
           />
+          {SCORE_TOOLTIP}
         </div>
       )}
     </div>
