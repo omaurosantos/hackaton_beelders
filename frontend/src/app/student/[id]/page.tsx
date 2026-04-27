@@ -79,16 +79,20 @@ function ScoreGauge({ score }: { score: number }) {
     return `M ${from.x} ${from.y} A ${R} ${R} 0 ${span > 180 ? 1 : 0} 1 ${to.x} ${to.y}`;
   };
 
+  // Arc endpoints sit at y ≈ cy + R*sin(30°) = 80+29 = 109; clip below that
+  const CLIP_H = 112;
+
   return (
-    <div className="relative flex flex-col items-center gap-1">
-      <div className="relative" style={{ width: SIZE, height: SIZE }}>
+    <div className="relative flex flex-col items-center gap-2">
+      <div className="relative" style={{ width: SIZE, height: CLIP_H, overflow: "hidden" }}>
         <svg width={SIZE} height={SIZE}>
           <path d={arcPath(START_DEG, START_DEG - SPAN_DEG)} fill="none" stroke="#f3f4f6" strokeWidth={SW} strokeLinecap="round" />
           {pct > 0 && (
             <path d={arcPath(START_DEG, endDeg)} fill="none" stroke={color} strokeWidth={SW} strokeLinecap="round" />
           )}
         </svg>
-          <div className="absolute inset-0 flex items-center justify-center" style={{ paddingBottom: 24 }}>
+        {/* % centered in the arc's visual area (top ≈22, bottom ≈109 → mid ≈65) */}
+        <div className="absolute inset-x-0 flex justify-center" style={{ top: 52 }}>
           <span className="text-3xl font-bold" style={{ color }}>{pct}%</span>
         </div>
       </div>
