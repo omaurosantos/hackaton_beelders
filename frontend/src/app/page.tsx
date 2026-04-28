@@ -41,7 +41,7 @@ export default function LoginPage() {
             <ChartBar size={26} weight="bold" color="white" />
             <span className="text-white font-bold text-lg">EvasãoZero</span>
           </div>
-          <h1 className="text-white font-bold leading-tight mb-4" style={{ fontSize: 36 }}>
+          <h1 className="text-white font-bold leading-tight mb-4 text-4xl">
             Identifique riscos<br />antes que virem<br />evasão.
           </h1>
           <p className="text-white/70 text-sm leading-relaxed">
@@ -80,7 +80,7 @@ export default function LoginPage() {
 
         <div className="w-full max-w-sm sm:max-w-md">
           <div className="mb-6">
-            <h2 className="font-bold text-fog-900 mb-1" style={{ fontSize: 24 }}>
+            <h2 className="text-2xl font-bold text-fog-900 mb-1">
               Bem-vindo de volta
             </h2>
             <p className="text-fog-600 text-sm">Selecione seu perfil de acesso para continuar.</p>

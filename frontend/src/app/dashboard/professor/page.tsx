@@ -7,7 +7,7 @@ import RiskBadge from "@/components/RiskBadge";
 import { fetchDashboardProfessor, fetchStudents, uploadCSV } from "@/lib/api";
 import { getStoredRole } from "@/lib/storage";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Users, Warning, TrendUp, CheckCircle, UploadSimple, FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
+import { Users, Warning, TrendUp, CheckCircle, UploadSimple, FunnelSimple, MagnifyingGlass, X } from "@phosphor-icons/react";
 
 interface CourseOption { id: number; name: string; period: string; }
 interface DashboardSummary {
@@ -53,6 +53,13 @@ export default function ProfessorDashboard() {
   }, [load, router]);
 
   useEffect(() => { setPage(1); }, [riskFilter, selectedCourse, nameFilter]);
+
+  // Auto-dismiss upload feedback after 5 s
+  useEffect(() => {
+    if (!uploadMsg) return;
+    const t = setTimeout(() => setUploadMsg(""), 5000);
+    return () => clearTimeout(t);
+  }, [uploadMsg]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -121,9 +128,12 @@ export default function ProfessorDashboard() {
         </div>
 
         {uploadMsg && (
-          <div className="mb-5 p-3 rounded-lg text-sm font-medium"
+          <div className="mb-5 p-3 rounded-lg text-sm font-medium flex items-center justify-between gap-2"
             style={{ background: "var(--primary-lightest)", color: "var(--primary)", borderLeft: "4px solid var(--primary)" }}>
-            {uploadMsg}
+            <span>{uploadMsg}</span>
+            <button onClick={() => setUploadMsg("")} className="shrink-0 opacity-60 hover:opacity-100" aria-label="Fechar">
+              <X size={14} weight="bold" />
+            </button>
           </div>
         )}
 
@@ -253,13 +263,13 @@ export default function ProfessorDashboard() {
               <thead>
                 <tr className="text-xs font-semibold text-fog-500 uppercase tracking-wide"
                   style={{ background: "var(--fog-50)" }}>
-                  <th className="px-5 py-3 text-left">Aluno</th>
-                  <th className="px-5 py-3 text-left">Curso</th>
-                  <th className="px-5 py-3 text-center">Score</th>
-                  <th className="px-5 py-3 text-center">Nível</th>
-                  <th className="px-5 py-3 text-center">Nota Média</th>
-                  <th className="px-5 py-3 text-center">Devedor</th>
-                  <th className="px-5 py-3 text-center">Ação</th>
+                  <th scope="col" className="px-5 py-3 text-left">Aluno</th>
+                  <th scope="col" className="px-5 py-3 text-left">Curso</th>
+                  <th scope="col" className="px-5 py-3 text-center">Score</th>
+                  <th scope="col" className="px-5 py-3 text-center">Nível</th>
+                  <th scope="col" className="px-5 py-3 text-center">Nota Média</th>
+                  <th scope="col" className="px-5 py-3 text-center">Devedor</th>
+                  <th scope="col" className="px-5 py-3 text-center">Ação</th>
                 </tr>
               </thead>
               <tbody>

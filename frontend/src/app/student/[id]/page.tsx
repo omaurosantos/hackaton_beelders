@@ -39,6 +39,17 @@ interface StudentDetail {
 const GRADE_MAX = 10;
 const GRADE_ATTENTION_THRESHOLD = 5;
 
+// Features whose value is binary (0 = Não, 1 = Sim)
+const BINARY_FEATURES = new Set([
+  "Devedor", "Mensalidade em dia", "Bolsista",
+  "Estudante deslocado", "Necessidades educativas especiais", "Turno (dia/noite)",
+]);
+
+function formatFactorValue(feature: string, value: number): string {
+  if (BINARY_FEATURES.has(feature)) return value === 1 ? "Sim" : "Não";
+  return value % 1 === 0 ? String(value) : value.toFixed(1);
+}
+
 function formatNumber(value: number, maximumFractionDigits = 1) {
   return value.toLocaleString("pt-BR", { maximumFractionDigits });
 }
@@ -54,7 +65,11 @@ const SCORE_TOOLTIP =
 function ScoreGauge({ score }: { score: number }) {
   const [showTip, setShowTip] = useState(false);
   const pct = Math.round(score * 100);
-  const color = score >= 0.65 ? "#ef4444" : score >= 0.35 ? "#f59e0b" : "#22c55e";
+  const color = score >= 0.65
+    ? "var(--attention-danger)"
+    : score >= 0.35
+    ? "var(--attention-warning)"
+    : "var(--attention-success)";
 
   const SIZE = 160;
   const cx = SIZE / 2;
@@ -85,10 +100,15 @@ function ScoreGauge({ score }: { score: number }) {
   return (
     <div className="relative flex flex-col items-center gap-2">
       <div className="relative" style={{ width: SIZE, height: CLIP_H, overflow: "hidden" }}>
-        <svg width={SIZE} height={SIZE}>
-          <path d={arcPath(START_DEG, START_DEG - SPAN_DEG)} fill="none" stroke="#f3f4f6" strokeWidth={SW} strokeLinecap="round" />
+        <svg
+          width={SIZE}
+          height={SIZE}
+          role="img"
+          aria-label={`Score de evasão: ${pct}%`}
+        >
+          <path d={arcPath(START_DEG, START_DEG - SPAN_DEG)} fill="none" stroke="var(--fog-100)" strokeWidth={SW} strokeLinecap="round" />
           {pct > 0 && (
-            <path d={arcPath(START_DEG, endDeg)} fill="none" stroke={color} strokeWidth={SW} strokeLinecap="round" />
+            <path d={arcPath(START_DEG, endDeg)} fill="none" style={{ stroke: color }} strokeWidth={SW} strokeLinecap="round" />
           )}
         </svg>
         {/* % centered in the arc's visual area (top ≈22, bottom ≈109 → mid ≈65) */}
@@ -98,16 +118,18 @@ function ScoreGauge({ score }: { score: number }) {
       </div>
 
       <div className="flex items-center gap-1">
-        <span className="text-xs text-gray-400">score de evasão</span>
+        <span className="text-xs text-fog-400">score de evasão</span>
         <button
+          onClick={() => setShowTip(v => !v)}
           onMouseEnter={() => setShowTip(true)}
           onMouseLeave={() => setShowTip(false)}
           onFocus={() => setShowTip(true)}
           onBlur={() => setShowTip(false)}
-          className="text-gray-400 hover:text-gray-600 outline-none"
+          className="text-fog-400 hover:text-fog-600 outline-none p-1.5 -m-1.5"
           aria-label="O que é o score?"
+          aria-expanded={showTip}
         >
-          <Info size={13} weight="bold" />
+          <Info size={14} weight="bold" />
         </button>
       </div>
 
@@ -202,7 +224,7 @@ export default function StudentDetailPage() {
               <UserCircle size={36} weight="bold" style={{ color: "var(--primary)" }} />
             </div>
             <div className="text-center">
-              <h2 className="font-bold text-fog-900" style={{ fontSize: 18 }}>{student.name}</h2>
+              <h2 className="text-lg font-bold text-fog-900">{student.name}</h2>
               <p className="text-sm text-fog-500 mt-0.5">{student.email}</p>
               <p className="text-xs text-fog-400 mt-1">{student.course} · {student.period}</p>
             </div>
@@ -314,11 +336,11 @@ export default function StudentDetailPage() {
                   <thead>
                     <tr className="text-xs font-semibold text-fog-500 uppercase tracking-wide"
                       style={{ background: "var(--fog-50)" }}>
-                      <th className="px-3 py-2.5 text-left">Semestre</th>
-                      <th className="px-3 py-2.5 text-center">Matriculadas</th>
-                      <th className="px-3 py-2.5 text-center">Aprovadas</th>
-                      <th className="px-3 py-2.5 text-center">Aprovação</th>
-                      <th className="px-3 py-2.5 text-center">Nota média</th>
+                      <th scope="col" className="px-3 py-2.5 text-left">Semestre</th>
+                      <th scope="col" className="px-3 py-2.5 text-center">Matriculadas</th>
+                      <th scope="col" className="px-3 py-2.5 text-center">Aprovadas</th>
+                      <th scope="col" className="px-3 py-2.5 text-center">Aprovação</th>
+                      <th scope="col" className="px-3 py-2.5 text-center">Nota média</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -363,7 +385,9 @@ export default function StudentDetailPage() {
                       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-1.5">
                         <span className="text-sm font-medium text-fog-800">{f.feature}</span>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-fog-400 hidden sm:inline">val. {f.value}</span>
+                          <span className="text-xs text-fog-400 hidden sm:inline">
+                            {formatFactorValue(f.feature, f.value)}
+                          </span>
                           <span className={isRisk ? "z-badge z-badge--danger" : "z-badge z-badge--success"}>
                             {isRisk ? "↑ risco" : "↓ risco"}
                           </span>

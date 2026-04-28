@@ -274,7 +274,7 @@ export default function IESDashboard() {
                 <YAxis type="category" dataKey="course" width={130} tick={{ fontSize: 10, fill: "#868d95" }} />
                 <Tooltip
                   formatter={(v: number, name: string) => [`${v}%`, name]}
-                  contentStyle={{ borderRadius: 8, border: "1px solid #d5d9e0", fontSize: 12 }}
+                  contentStyle={{ borderRadius: 8, border: "1px solid #d1d5db", fontSize: 12 }}
                 />
                 <Bar dataKey="alto_pct" name="Alto" fill="#da1e28" stackId="a" />
                 <Bar dataKey="medio_pct" name="Médio" fill="#ffb005" stackId="a" />
@@ -292,7 +292,7 @@ export default function IESDashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e8eaee" />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#868d95" }} />
                 <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: "#868d95" }} />
-                <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ borderRadius: 8, border: "1px solid #d5d9e0", fontSize: 12 }} />
+                <Tooltip formatter={(v: number) => `${v}%`} contentStyle={{ borderRadius: 8, border: "1px solid #d1d5db", fontSize: 12 }} />
                 <Line type="monotone" dataKey="taxa" stroke="#304ffe" strokeWidth={2.5}
                   dot={{ r: 4, fill: "#304ffe", strokeWidth: 0 }} name="% em risco" />
               </LineChart>
