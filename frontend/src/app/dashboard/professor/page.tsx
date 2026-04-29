@@ -65,7 +65,7 @@ export default function ProfessorDashboard() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true); setUploadMsg("");
-    try { const r = await uploadCSV(file); setUploadMsg(r.message); load(); }
+    try { const r = await uploadCSV(file); setUploadMsg(r.message); await load(); }
     catch { setUploadMsg("Erro ao processar CSV."); }
     finally { setUploading(false); }
   }

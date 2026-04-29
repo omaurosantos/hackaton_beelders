@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart,
@@ -17,7 +17,7 @@ import Navbar from "@/components/Navbar";
 import StatCard from "@/components/StatCard";
 import { fetchDashboardIES, fetchModelMetrics } from "@/lib/api";
 import { getStoredRole } from "@/lib/storage";
-import { Users, Warning, TrendUp, CheckCircle } from "@phosphor-icons/react";
+import { Users, Warning, TrendUp, CheckCircle, ArrowClockwise } from "@phosphor-icons/react";
 
 interface CourseRow {
   course: string;
@@ -96,20 +96,32 @@ export default function IESDashboard() {
   const [data, setData] = useState<IESData | null>(null);
   const [metrics, setMetrics] = useState<ModelMetrics | null>(null);
   const [metricsError, setMetricsError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const [iesData] = await Promise.all([
+        fetchDashboardIES(),
+        fetchModelMetrics()
+          .then(setMetrics)
+          .catch((error) => { console.error(error); setMetricsError(true); }),
+      ]);
+      setData(iesData);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (getStoredRole() !== "ies") {
       router.push("/");
       return;
     }
-    fetchDashboardIES().then(setData).catch(console.error);
-    fetchModelMetrics()
-      .then(setMetrics)
-      .catch((error) => {
-        console.error(error);
-        setMetricsError(true);
-      });
-  }, [router]);
+    load();
+  }, [router, load]);
 
   if (!data) {
     return (
@@ -134,9 +146,29 @@ export default function IESDashboard() {
       <Navbar role="ies" />
 
       <main className="max-w-7xl mx-auto px-4 py-5 sm:py-8">
-        <div className="mb-5 sm:mb-8">
-          <h2 className="font-bold text-fog-900 text-xl sm:text-2xl">Dashboard Institucional</h2>
-          <p className="text-fog-500 text-sm mt-0.5">Visão agregada por curso e período</p>
+        <div className="flex items-start justify-between gap-3 mb-5 sm:mb-8">
+          <div>
+            <h2 className="font-bold text-fog-900 text-xl sm:text-2xl">Dashboard Institucional</h2>
+            <p className="text-fog-500 text-sm mt-0.5">Visão agregada por curso e período</p>
+          </div>
+          <button
+            onClick={load}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors shrink-0"
+            style={{
+              borderColor: "var(--fog-200)",
+              background: "white",
+              color: "var(--fog-700)",
+            }}
+            title="Atualizar dados"
+          >
+            <ArrowClockwise
+              size={15}
+              weight="bold"
+              className={refreshing ? "animate-spin" : ""}
+            />
+            <span className="hidden sm:inline">Atualizar</span>
+          </button>
         </div>
 
         {/* KPI cards */}
