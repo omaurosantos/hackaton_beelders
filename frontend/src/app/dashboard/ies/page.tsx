@@ -374,15 +374,15 @@ export default function IESDashboard() {
                   Principais Motivos de Risco Institucional
                 </h3>
                 <p className="text-xs text-fog-400 mt-0.5">
-                  Fatores que mais elevam o risco dos 100 alunos em situação mais crítica · ordenado por frequência
+                  Fatores que mais elevam o risco dos {Math.min(data.alto_risco + data.medio_risco, 100)} alunos em situação mais crítica · % = parcela desses alunos afetada
                 </p>
               </div>
             </div>
 
             <div className="space-y-4">
               {data.top_factors.map((f, i) => {
-                const max = data.top_factors[0].affected_students;
-                const barPct = Math.round((f.affected_students / max) * 100);
+                const sampleSize = Math.min(data.alto_risco + data.medio_risco, 100);
+                const barPct = sampleSize ? Math.round((f.affected_students / sampleSize) * 100) : 0;
                 const cat = getCategory(f.factor);
                 const action = CATEGORY_ACTION[cat.label];
                 return (
