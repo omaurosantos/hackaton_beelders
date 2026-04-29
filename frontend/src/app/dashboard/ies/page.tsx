@@ -176,7 +176,6 @@ export default function IESDashboard() {
           <StatCard title="Total de Alunos" value={data.total}
             icon={<Users size={16} weight="bold" />} variant="default" />
           <StatCard title="Alto Risco" value={data.alto_risco}
-            sub={`${highRiskRate}% dos alunos`}
             icon={<Warning size={16} weight="bold" />} variant="danger" />
           <StatCard title="Médio Risco" value={data.medio_risco}
             icon={<TrendUp size={16} weight="bold" />} variant="warning" />

@@ -142,7 +142,6 @@ export default function ProfessorDashboard() {
           <StatCard title="Total de Alunos" value={summary.total}
             icon={<Users size={16} weight="bold" />} variant="default" />
           <StatCard title="Alto Risco" value={summary.alto_risco}
-            sub={`${((summary.alto_risco / summary.total) * 100).toFixed(0)}% da turma`}
             icon={<Warning size={16} weight="bold" />} variant="danger" />
           <StatCard title="Médio Risco" value={summary.medio_risco}
             icon={<TrendUp size={16} weight="bold" />} variant="warning" />
