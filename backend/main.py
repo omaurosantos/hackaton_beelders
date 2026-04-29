@@ -37,7 +37,6 @@ class PredictRequest(BaseModel):
     educational_special_needs: int = 0
     debtor: int = 0
     tuition_fees_up_to_date: int = 1
-    gender: int = 1
     scholarship_holder: int = 0
     age_at_enrollment: int = 20
     curricular_units_1st_sem_enrolled: int = 6
@@ -91,7 +90,6 @@ def predict_endpoint(req: PredictRequest, db: Session = Depends(get_db)):
         "Educational special needs": features["educational_special_needs"],
         "Debtor": features["debtor"],
         "Tuition fees up to date": features["tuition_fees_up_to_date"],
-        "Gender": features["gender"],
         "Scholarship holder": features["scholarship_holder"],
         "Age at enrollment": features["age_at_enrollment"],
         "Curricular units 1st sem (enrolled)": features["curricular_units_1st_sem_enrolled"],
