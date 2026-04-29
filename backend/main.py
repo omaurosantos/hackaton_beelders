@@ -303,6 +303,36 @@ def dashboard_ies(db: Session = Depends(get_db)):
         for i, m in enumerate(months)
     ]
 
+    # ── Top institutional risk factors ───────────────────────────────────────
+    # Aggregate the positive-impact factors across the top-100 highest-risk
+    # students to surface what is systemically driving dropout risk.
+    risk_students = [s for s in students if s.risk_level in ("alto", "médio")]
+    sample = sorted(risk_students, key=lambda s: s.risk_score, reverse=True)[:100]
+    factor_agg: dict[str, dict] = {}
+    for s in sample:
+        result = predict_dropout(features_from_student(s))
+        for f in result["factors"]:
+            if f["impact"] != "positivo":
+                continue
+            name = f["feature"]
+            if name not in factor_agg:
+                factor_agg[name] = {"count": 0, "total_contribution": 0.0}
+            factor_agg[name]["count"] += 1
+            factor_agg[name]["total_contribution"] += f["contribution"]
+
+    top_factors = sorted(
+        [
+            {
+                "factor": name,
+                "affected_students": v["count"],
+                "avg_contribution": round(v["total_contribution"] / v["count"], 4),
+            }
+            for name, v in factor_agg.items()
+        ],
+        key=lambda x: x["affected_students"],
+        reverse=True,
+    )[:5]
+
     return {
         "total": total,
         "alto_risco": alto,
@@ -312,6 +342,7 @@ def dashboard_ies(db: Session = Depends(get_db)):
         "by_course": by_course,
         "alertas": alertas,
         "trend": trend,
+        "top_factors": top_factors,
     }
 
 

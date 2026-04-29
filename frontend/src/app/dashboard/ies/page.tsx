@@ -42,6 +42,12 @@ interface TrendPoint {
   taxa: number;
 }
 
+interface TopFactor {
+  factor: string;
+  affected_students: number;
+  avg_contribution: number;
+}
+
 interface IESData {
   total: number;
   alto_risco: number;
@@ -51,6 +57,7 @@ interface IESData {
   by_course: CourseRow[];
   alertas: Alert[];
   trend: TrendPoint[];
+  top_factors: TopFactor[];
 }
 
 interface ConfusionMatrix {
@@ -90,6 +97,33 @@ interface ModelMetrics {
 }
 
 const pct = (value: number) => `${Math.round(value * 100)}%`;
+
+const FACTOR_CATEGORY: Record<string, { label: string; color: string; bg: string }> = {
+  "Devedor":                           { label: "Financeiro", color: "#b45309", bg: "#fef3c7" },
+  "Mensalidade em dia":               { label: "Financeiro", color: "#b45309", bg: "#fef3c7" },
+  "Bolsista":                          { label: "Financeiro", color: "#b45309", bg: "#fef3c7" },
+  "Nota média (1º sem)":              { label: "Acadêmico",  color: "#1d4ed8", bg: "#dbeafe" },
+  "Nota média (2º sem)":              { label: "Acadêmico",  color: "#1d4ed8", bg: "#dbeafe" },
+  "Disciplinas aprovadas (1º sem)":   { label: "Acadêmico",  color: "#1d4ed8", bg: "#dbeafe" },
+  "Disciplinas aprovadas (2º sem)":   { label: "Acadêmico",  color: "#1d4ed8", bg: "#dbeafe" },
+  "Disciplinas matriculadas (1º sem)":{ label: "Acadêmico",  color: "#1d4ed8", bg: "#dbeafe" },
+  "Disciplinas matriculadas (2º sem)":{ label: "Acadêmico",  color: "#1d4ed8", bg: "#dbeafe" },
+  "Qualificação anterior":            { label: "Acadêmico",  color: "#1d4ed8", bg: "#dbeafe" },
+  "Taxa de desemprego":               { label: "Econômico",  color: "#6d28d9", bg: "#ede9fe" },
+  "Taxa de inflação":                 { label: "Econômico",  color: "#6d28d9", bg: "#ede9fe" },
+  "PIB":                              { label: "Econômico",  color: "#6d28d9", bg: "#ede9fe" },
+};
+
+function getCategory(factor: string) {
+  return FACTOR_CATEGORY[factor] ?? { label: "Pessoal", color: "#065f46", bg: "#d1fae5" };
+}
+
+const CATEGORY_ACTION: Record<string, string> = {
+  "Financeiro": "Considere programas de apoio financeiro, renegociação de dívidas ou bolsas emergenciais.",
+  "Acadêmico":  "Reforce tutoria, monitoramento de desempenho e oferta de reforço pedagógico.",
+  "Econômico":  "Contexto externo — priorize suporte socioeconômico e flexibilização de mensalidades.",
+  "Pessoal":    "Ofereça apoio psicossocial, orientação acadêmica e flexibilidade de horários.",
+};
 
 export default function IESDashboard() {
   const router = useRouter();
@@ -330,6 +364,100 @@ export default function IESDashboard() {
             </ResponsiveContainer>
           </div>
         </div>
+
+        {/* ── Principais Fatores de Risco ───────────────────────────────── */}
+        {data.top_factors && data.top_factors.length > 0 && (
+          <div className="z-card p-4 sm:p-6 mb-4 sm:mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-5">
+              <div>
+                <h3 className="font-semibold text-fog-900 text-sm sm:text-base">
+                  Principais Motivos de Risco Institucional
+                </h3>
+                <p className="text-xs text-fog-400 mt-0.5">
+                  Fatores que mais elevam o risco dos 100 alunos em situação mais crítica · ordenado por frequência
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {data.top_factors.map((f, i) => {
+                const max = data.top_factors[0].affected_students;
+                const barPct = Math.round((f.affected_students / max) * 100);
+                const cat = getCategory(f.factor);
+                const action = CATEGORY_ACTION[cat.label];
+                return (
+                  <div key={f.factor}>
+                    <div className="flex items-center gap-3 mb-1.5">
+                      {/* Rank */}
+                      <span
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                        style={{
+                          background: i === 0 ? "var(--primary)" : "var(--fog-100)",
+                          color: i === 0 ? "white" : "var(--fog-600)",
+                        }}
+                      >
+                        {i + 1}
+                      </span>
+
+                      {/* Factor name + category */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold text-fog-900 truncate">
+                            {f.factor}
+                          </span>
+                          <span
+                            className="text-xs font-medium px-2 py-0.5 rounded-full shrink-0"
+                            style={{ background: cat.bg, color: cat.color }}
+                          >
+                            {cat.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Count */}
+                      <span className="text-sm font-bold text-fog-700 shrink-0">
+                        {f.affected_students} alunos
+                      </span>
+                    </div>
+
+                    {/* Bar */}
+                    <div className="ml-9 flex items-center gap-2">
+                      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--fog-100)" }}>
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${barPct}%`, background: cat.color, opacity: 0.7 }}
+                        />
+                      </div>
+                      <span className="text-xs text-fog-400 w-8 text-right">{barPct}%</span>
+                    </div>
+
+                    {/* Action hint — only for #1 */}
+                    {i === 0 && action && (
+                      <p className="ml-9 mt-1.5 text-xs text-fog-500 leading-relaxed">
+                        💡 {action}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Action summary per category */}
+            {(() => {
+              const cats = [...new Set(data.top_factors.map((f) => getCategory(f.factor).label))];
+              return cats.length > 1 ? (
+                <div className="mt-5 pt-4 grid sm:grid-cols-2 gap-3" style={{ borderTop: "1px solid var(--fog-100)" }}>
+                  {cats.map((c) => (
+                    <div key={c} className="rounded-lg p-3" style={{ background: "var(--fog-50)" }}>
+                      <p className="text-xs font-semibold text-fog-700 mb-1">{c}</p>
+                      <p className="text-xs text-fog-500 leading-relaxed">{CATEGORY_ACTION[c]}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null;
+            })()}
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
           {/* Alertas */}
