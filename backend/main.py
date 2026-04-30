@@ -3,17 +3,28 @@ import csv
 import io
 from datetime import datetime
 from typing import Optional
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
-from database import get_db, engine
-from models import Base, Student, Course, PredictionLog
-from ml_model import predict_dropout, features_from_student, FEATURE_COLS, load_model_metrics
+from database import get_db, ensure_schema
+from models import Student, Course, PredictionLog
+from ml_model import (
+    LOW_RISK_THRESHOLD,
+    FEATURE_COLS,
+    feature_stats_from_records,
+    features_from_student,
+    get_model_version,
+    load_model_metrics,
+    predict_dropout,
+    reload_model,
+    resolve_dataset_path,
+    train_model,
+    training_feature_stats,
+)
 
-Base.metadata.create_all(bind=engine)
+ensure_schema()
 
 app = FastAPI(title="EvasãoZero API", version="1.0.0")
 
@@ -69,18 +80,84 @@ class StudentOut(BaseModel):
     curricular_units_2nd_sem_enrolled: int
     curricular_units_2nd_sem_approved: int
     curricular_units_2nd_sem_grade: float
+    actual_status: str
 
     class Config:
         from_attributes = True
 
 
-# ── Predict ───────────────────────────────────────────────────────────────────
+class StudentStatusRequest(BaseModel):
+    actual_status: str
 
-@app.post("/predict/dropout")
-def predict_endpoint(req: PredictRequest, db: Session = Depends(get_db)):
+
+VALID_ACTUAL_STATUSES = {"active", "dropout", "graduate"}
+STATUS_ALIASES = {
+    "active": "active",
+    "ativo": "active",
+    "ativa": "active",
+    "matriculado": "active",
+    "matriculada": "active",
+    "cursando": "active",
+    "dropout": "dropout",
+    "evadido": "dropout",
+    "evadida": "dropout",
+    "evasao": "dropout",
+    "evasão": "dropout",
+    "desistente": "dropout",
+    "graduate": "graduate",
+    "graduado": "graduate",
+    "graduada": "graduate",
+    "formado": "graduate",
+    "formada": "graduate",
+    "concluido": "graduate",
+    "concluida": "graduate",
+    "concluído": "graduate",
+    "concluída": "graduate",
+}
+
+
+def _normalize_actual_status(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    return STATUS_ALIASES.get(normalized)
+
+
+def _round(value: float) -> float:
+    return round(float(value), 4)
+
+
+def _binary_metrics(y_true: list[int], y_pred: list[int]) -> dict:
+    tp = sum(1 for t, p in zip(y_true, y_pred) if t == 1 and p == 1)
+    tn = sum(1 for t, p in zip(y_true, y_pred) if t == 0 and p == 0)
+    fp = sum(1 for t, p in zip(y_true, y_pred) if t == 0 and p == 1)
+    fn = sum(1 for t, p in zip(y_true, y_pred) if t == 1 and p == 0)
+
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    accuracy = (tp + tn) / len(y_true) if y_true else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+    return {
+        "precision": _round(precision),
+        "recall": _round(recall),
+        "f1": _round(f1),
+        "accuracy": _round(accuracy),
+        "alert_rate": _round(sum(y_pred) / len(y_pred)) if y_pred else 0.0,
+        "confusion_matrix": {
+            "true_negative": tn,
+            "false_positive": fp,
+            "false_negative": fn,
+            "true_positive": tp,
+        },
+    }
+
+
+def _request_to_features(req: PredictRequest) -> dict:
     features = req.model_dump(exclude={"student_id"})
-    # Map snake_case keys to dataset column names
-    mapped = {
+    return {
         "Marital status": features["marital_status"],
         "Application mode": features["application_mode"],
         "Application order": features["application_order"],
@@ -102,25 +179,54 @@ def predict_endpoint(req: PredictRequest, db: Session = Depends(get_db)):
         "Inflation rate": features["inflation_rate"],
         "GDP": features["gdp"],
     }
-    result = predict_dropout(mapped)
 
+
+def _apply_request_fields(student: Student, req: PredictRequest):
+    features = req.model_dump(exclude={"student_id"})
+    for key, value in features.items():
+        setattr(student, key, value)
+
+
+def run_and_log_prediction(
+    db: Session,
+    student: Optional[Student],
+    source: str,
+    features: Optional[dict] = None,
+) -> dict:
+    features = features or features_from_student(student)
+    result = predict_dropout(features)
+
+    if student:
+        student.risk_score = result["score"]
+        student.risk_level = result["risk_level"]
+        student.updated_at = datetime.utcnow()
+
+    db.add(PredictionLog(
+        student_id=student.id if student else None,
+        model_version=get_model_version(),
+        risk_score=result["score"],
+        risk_level=result["risk_level"],
+        factors=json.dumps(result["factors"], ensure_ascii=False),
+        features=json.dumps(features, ensure_ascii=False),
+        source=source,
+    ))
+    return result
+
+
+# ── Predict ───────────────────────────────────────────────────────────────────
+
+@app.post("/predict/dropout")
+def predict_endpoint(req: PredictRequest, db: Session = Depends(get_db)):
+    mapped = _request_to_features(req)
+    student = None
     if req.student_id:
         student = db.query(Student).filter(Student.id == req.student_id).first()
-        if student:
-            for k, v in features.items():
-                setattr(student, k, v)
-            student.risk_score = result["score"]
-            student.risk_level = result["risk_level"]
-            student.updated_at = datetime.utcnow()
+        if not student:
+            raise HTTPException(status_code=404, detail="Student not found")
+        _apply_request_fields(student, req)
 
-        log = PredictionLog(
-            student_id=req.student_id,
-            risk_score=result["score"],
-            risk_level=result["risk_level"],
-            factors=json.dumps(result["factors"], ensure_ascii=False),
-        )
-        db.add(log)
-        db.commit()
+    result = run_and_log_prediction(db, student, source="api_predict", features=mapped)
+    db.commit()
 
     return result
 
@@ -128,6 +234,100 @@ def predict_endpoint(req: PredictRequest, db: Session = Depends(get_db)):
 @app.get("/model/metrics")
 def model_metrics():
     return load_model_metrics()
+
+
+@app.post("/model/retrain")
+def retrain_model():
+    dataset_path = resolve_dataset_path()
+    metrics = train_model(dataset_path)
+    reload_model()
+    model = metrics.get("model", {})
+    validation = metrics.get("validation", {})
+    return {
+        "model_version": model.get("version"),
+        "trained_at": model.get("trained_at"),
+        "dataset_rows": model.get("dataset_rows"),
+        "dataset_hash": model.get("dataset_hash"),
+        "validation": {
+            "roc_auc": validation.get("roc_auc"),
+            "precision": validation.get("precision"),
+            "recall": validation.get("recall"),
+            "f1": validation.get("f1"),
+            "accuracy": validation.get("accuracy"),
+        },
+    }
+
+
+@app.get("/model/monitoring")
+def model_monitoring(db: Session = Depends(get_db)):
+    students = db.query(Student).all()
+    current_records = [features_from_student(student) for student in students]
+    train_stats = training_feature_stats()
+    current_stats = feature_stats_from_records(current_records)
+
+    features = []
+    alerts = 0
+    for col in FEATURE_COLS:
+        train_mean = train_stats[col]["mean"]
+        current_mean = current_stats[col]["mean"]
+        relative_change = None
+        reasons = []
+
+        if train_mean is not None and current_mean is not None:
+            denominator = max(abs(train_mean), 1e-9)
+            relative_change = _round(abs(current_mean - train_mean) / denominator)
+            if relative_change > 0.3:
+                reasons.append("mean_shift")
+
+        missing_rate = current_stats[col]["missing_rate"]
+        if missing_rate is not None and missing_rate > 0.1:
+            reasons.append("missing_values")
+
+        status = "alert" if reasons else "ok"
+        if status == "alert":
+            alerts += 1
+
+        features.append({
+            "feature": col,
+            "train": train_stats[col],
+            "current": current_stats[col],
+            "train_mean": train_mean,
+            "current_mean": current_mean,
+            "relative_mean_change": relative_change,
+            "status": status,
+            "reasons": reasons,
+        })
+
+    return {
+        "model_version": get_model_version(),
+        "students_analyzed": len(students),
+        "alerts": alerts,
+        "features": features,
+    }
+
+
+@app.get("/model/live-metrics")
+def model_live_metrics(db: Session = Depends(get_db)):
+    students = db.query(Student).all()
+    evaluated = [s for s in students if s.actual_status in {"dropout", "graduate"}]
+    y_true = [1 if s.actual_status == "dropout" else 0 for s in evaluated]
+    y_pred = [
+        1 if s.risk_level in {"médio", "medio", "alto"} or s.risk_score >= LOW_RISK_THRESHOLD else 0
+        for s in evaluated
+    ]
+    last_prediction_at = max(
+        (s.updated_at for s in evaluated if s.updated_at),
+        default=None,
+    )
+
+    return {
+        "model_version": get_model_version(),
+        "threshold": LOW_RISK_THRESHOLD,
+        "evaluated_students": len(evaluated),
+        "students_without_feedback": len(students) - len(evaluated),
+        "last_prediction_at": last_prediction_at.isoformat() + "Z" if last_prediction_at else None,
+        **_binary_metrics(y_true, y_pred),
+    }
 
 
 # ── Student detail ────────────────────────────────────────────────────────────
@@ -138,8 +338,8 @@ def get_student(student_id: int, db: Session = Depends(get_db)):
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    features = features_from_student(student)
-    result = predict_dropout(features)
+    result = run_and_log_prediction(db, student, source="student_detail")
+    db.commit()
 
     course = db.query(Course).filter(Course.id == student.course_id).first()
     return {
@@ -161,6 +361,32 @@ def get_student(student_id: int, db: Session = Depends(get_db)):
         "curricular_units_2nd_sem_enrolled": student.curricular_units_2nd_sem_enrolled,
         "curricular_units_2nd_sem_approved": student.curricular_units_2nd_sem_approved,
         "curricular_units_2nd_sem_grade": student.curricular_units_2nd_sem_grade,
+        "actual_status": student.actual_status,
+        "status_updated_at": student.status_updated_at.isoformat() + "Z" if student.status_updated_at else None,
+    }
+
+
+@app.patch("/students/{student_id}/status")
+def update_student_status(
+    student_id: int,
+    req: StudentStatusRequest,
+    db: Session = Depends(get_db),
+):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    status = _normalize_actual_status(req.actual_status)
+    if status not in VALID_ACTUAL_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid actual_status")
+
+    student.actual_status = status
+    student.status_updated_at = datetime.utcnow()
+    db.commit()
+    return {
+        "id": student.id,
+        "actual_status": student.actual_status,
+        "status_updated_at": student.status_updated_at.isoformat() + "Z",
     }
 
 
@@ -197,6 +423,8 @@ def list_students(
             "curricular_units_2nd_sem_enrolled": s.curricular_units_2nd_sem_enrolled,
             "curricular_units_2nd_sem_approved": s.curricular_units_2nd_sem_approved,
             "curricular_units_2nd_sem_grade": s.curricular_units_2nd_sem_grade,
+            "actual_status": s.actual_status,
+            "status_updated_at": s.status_updated_at.isoformat() + "Z" if s.status_updated_at else None,
         })
     return result
 
@@ -348,16 +576,47 @@ def dashboard_ies(db: Session = Depends(get_db)):
 
 # ── CSV Upload ────────────────────────────────────────────────────────────────
 
+FEATURE_ATTRS = {
+    "Marital status": "marital_status",
+    "Application mode": "application_mode",
+    "Application order": "application_order",
+    "Daytime/evening attendance": "daytime_attendance",
+    "Previous qualification": "previous_qualification",
+    "Displaced": "displaced",
+    "Educational special needs": "educational_special_needs",
+    "Debtor": "debtor",
+    "Tuition fees up to date": "tuition_fees_up_to_date",
+    "Scholarship holder": "scholarship_holder",
+    "Age at enrollment": "age_at_enrollment",
+    "Curricular units 1st sem (enrolled)": "curricular_units_1st_sem_enrolled",
+    "Curricular units 1st sem (approved)": "curricular_units_1st_sem_approved",
+    "Curricular units 1st sem (grade)": "curricular_units_1st_sem_grade",
+    "Curricular units 2nd sem (enrolled)": "curricular_units_2nd_sem_enrolled",
+    "Curricular units 2nd sem (approved)": "curricular_units_2nd_sem_approved",
+    "Curricular units 2nd sem (grade)": "curricular_units_2nd_sem_grade",
+    "Unemployment rate": "unemployment_rate",
+    "Inflation rate": "inflation_rate",
+    "GDP": "gdp",
+}
+
+
 def _apply_feature_cols(student: Student, row: dict):
     for col in FEATURE_COLS:
-        snake = col.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("/", "_")
+        attr = FEATURE_ATTRS[col]
         if col in row:
             try:
                 val = float(row[col])
-                if hasattr(student, snake):
-                    setattr(student, snake, val)
-            except ValueError:
+                setattr(student, attr, val)
+            except (TypeError, ValueError):
                 pass
+
+
+def _apply_actual_status(student: Student, row: dict):
+    raw_status = row.get("actual_status") or row.get("status") or row.get("situacao")
+    status = _normalize_actual_status(raw_status)
+    if status:
+        student.actual_status = status
+        student.status_updated_at = datetime.utcnow()
 
 
 def _resolve_course(db: Session, course_name: str, period: str) -> int:
@@ -388,6 +647,7 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
 
         if student:
             _apply_feature_cols(student, row)
+            _apply_actual_status(student, row)
             updated += 1
         else:
             name = (row.get("name") or row.get("nome") or "").strip()
@@ -406,12 +666,10 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
             db.add(student)
             db.flush()
             _apply_feature_cols(student, row)
+            _apply_actual_status(student, row)
             created += 1
 
-        result = predict_dropout(features_from_student(student))
-        student.risk_score = result["score"]
-        student.risk_level = result["risk_level"]
-        student.updated_at = datetime.utcnow()
+        run_and_log_prediction(db, student, source="csv_upload")
 
     db.commit()
     parts = []

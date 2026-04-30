@@ -23,6 +23,24 @@ export async function fetchModelMetrics() {
   return res.json();
 }
 
+export async function retrainModel() {
+  const res = await fetch(`${BASE}/model/retrain`, { method: "POST" });
+  if (!res.ok) throw new Error("Erro ao retreinar modelo");
+  return res.json();
+}
+
+export async function fetchModelMonitoring() {
+  const res = await fetch(`${BASE}/model/monitoring`, NO_CACHE);
+  if (!res.ok) throw new Error("Erro ao carregar monitoramento do modelo");
+  return res.json();
+}
+
+export async function fetchLiveMetrics() {
+  const res = await fetch(`${BASE}/model/live-metrics`, NO_CACHE);
+  if (!res.ok) throw new Error("Erro ao carregar métricas pós-deploy");
+  return res.json();
+}
+
 export async function fetchStudents(courseId?: number, riskLevel?: string) {
   const params = new URLSearchParams();
   if (courseId) params.set("course_id", String(courseId));
@@ -35,6 +53,16 @@ export async function fetchStudents(courseId?: number, riskLevel?: string) {
 export async function fetchStudent(id: number) {
   const res = await fetch(`${BASE}/students/${id}`);
   if (!res.ok) throw new Error("Erro ao carregar aluno");
+  return res.json();
+}
+
+export async function updateStudentStatus(id: number, actualStatus: string) {
+  const res = await fetch(`${BASE}/students/${id}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actual_status: actualStatus }),
+  });
+  if (!res.ok) throw new Error("Erro ao atualizar status real do aluno");
   return res.json();
 }
 

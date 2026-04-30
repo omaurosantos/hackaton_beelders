@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
@@ -48,6 +48,10 @@ class Student(Base):
     risk_level = Column(String, default="baixo")  # baixo/médio/alto
     updated_at = Column(DateTime, default=datetime.utcnow)
 
+    # Real outcome feedback for post-deploy evaluation
+    actual_status = Column(String, default="active")  # active/dropout/graduate
+    status_updated_at = Column(DateTime)
+
 
 class PredictionLog(Base):
     __tablename__ = "prediction_logs"
@@ -56,4 +60,7 @@ class PredictionLog(Base):
     risk_score = Column(Float)
     risk_level = Column(String)
     factors = Column(String)  # JSON string
+    model_version = Column(String)
+    features = Column(String)  # JSON string
+    source = Column(String, default="unknown")
     created_at = Column(DateTime, default=datetime.utcnow)

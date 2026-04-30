@@ -75,8 +75,12 @@ docker-compose up --build
 | GET | `/dashboard/professor` | Métricas da turma |
 | GET | `/dashboard/ies` | Métricas agregadas por curso |
 | GET | `/model/metrics` | Métricas de validação do modelo |
+| POST | `/model/retrain` | Retreinamento manual e controlado do modelo |
+| GET | `/model/monitoring` | Monitoramento básico de drift das features |
+| GET | `/model/live-metrics` | Métricas pós-deploy com feedback real |
 | GET | `/students` | Lista de alunos (com filtros) |
 | GET | `/students/{id}` | Detalhe do aluno + fatores |
+| PATCH | `/students/{id}/status` | Atualiza resultado real do aluno |
 | POST | `/upload/csv` | Atualizar base via CSV |
 | GET | `/health` | Status da API |
 
@@ -96,12 +100,22 @@ Login na página raiz (`/`) — sem senha, apenas seleção de perfil.
 ## Modelo de IA
 
 - Algoritmo: Regressão Logística (scikit-learn)
-- Features: 21 variáveis (acadêmicas, financeiras, demográficas)
+- Features: 20 variáveis (acadêmicas, financeiras, demográficas; gênero foi removido para reduzir viés)
 - Dataset: 4424 registros, classes Dropout / Graduate
 - Validação: split 80/20 estratificado, com AUC, precision, recall, F1 e matriz de confusão
 - Saída: score (0–1), nível (baixo/médio/alto), top 5 fatores explicativos
 - Thresholds: baixo < 0,35; médio ≥ 0,35; alto ≥ 0,65
 - Treino automático na primeira execução via `dataset.csv`
+- Versionamento simples: cada treino salva `model_version`, data, hash do dataset e features em `model_metrics.json`
+
+### Ciclo operacional de ML
+
+- Toda predição gera log auditável em `prediction_logs`, com origem (`api_predict`, `student_detail`, `csv_upload`, `seed`), versão do modelo, features usadas, score, nível e fatores.
+- O retreinamento é manual via `POST /model/retrain`; upload de CSV apenas recalcula scores com o modelo atual.
+- O feedback real do aluno fica em `actual_status` (`active`, `dropout`, `graduate`) e pode ser atualizado via `PATCH /students/{id}/status` ou importado no CSV.
+- `/model/metrics` mostra validação offline no holdout do dataset de treino.
+- `/model/live-metrics` compara predições persistidas com `actual_status` real.
+- `/model/monitoring` compara estatísticas das features atuais contra o dataset de treino e sinaliza drift simples.
 
 ---
 

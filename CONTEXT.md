@@ -134,6 +134,21 @@ Hackaton/
 | risk_score | Float | Probabilidade de evasão (0.0 a 1.0) |
 | risk_level | String | "alto", "médio" ou "baixo" |
 | updated_at | DateTime | Última atualização da predição |
+| actual_status | String | Feedback real: `active`, `dropout` ou `graduate` |
+| status_updated_at | DateTime | Última atualização do feedback real |
+
+### Tabela `prediction_logs`
+| Campo | Tipo | Descrição |
+|---|---|---|
+| id | Integer PK | — |
+| student_id | FK → students | Aluno avaliado; pode ser nulo em predições avulsas |
+| risk_score | Float | Score retornado pelo modelo |
+| risk_level | String | Nível retornado pelo modelo |
+| factors | String JSON | Top fatores explicativos da predição |
+| model_version | String | Versão do modelo usada na predição |
+| features | String JSON | Features exatas enviadas ao modelo |
+| source | String | Origem: `api_predict`, `student_detail`, `csv_upload` ou `seed` |
+| created_at | DateTime | Data do log |
 
 ---
 
@@ -146,7 +161,7 @@ Hackaton/
 
 ### Pipeline
 ```
-Entrada (21 features numéricas)
+Entrada (20 features numéricas; gênero foi removido para reduzir viés)
     → StandardScaler (normaliza média=0, desvio=1)
     → LogisticRegression (max_iter=1000, class_weight="balanced", random_state=42)
     → predict_proba → probabilidade da classe "Dropout" (índice 1)
@@ -175,8 +190,26 @@ Métricas calculadas:
 | ≥ 0.35 e < 0.65 | médio |
 | < 0.35 | baixo |
 
-### Serialização
+### Serialização e versionamento
 O modelo treinado é salvo em `backend/dropout_model.pkl` via `joblib`, e as métricas ficam em `backend/model_metrics.json`. Na primeira vez que o servidor sobe sem algum desses arquivos, ele treina automaticamente a partir de `dataset.csv`.
+
+O JSON de métricas também guarda metadados de operação:
+- `model.version` no formato `lr-YYYYMMDD-HHMMSS-hash`
+- `model.trained_at`
+- `model.dataset_hash`
+- `model.dataset_path`
+- `model.features`
+- thresholds baixo/médio/alto
+
+O retreinamento em ambiente rodando é manual via `POST /model/retrain`. Upload de CSV não retreina o modelo automaticamente; ele apenas recalcula os scores com a versão atual.
+
+### Monitoramento e feedback real
+O protótipo possui três camadas simples de operação pós-deploy:
+- Logs auditáveis em `prediction_logs` para cada predição operacional.
+- Feedback real em `students.actual_status`, atualizado via API ou CSV.
+- Monitoramento básico de drift em `GET /model/monitoring`, comparando média, desvio, mínimo, máximo e nulos das features atuais contra o dataset de treino.
+
+`GET /model/metrics` mostra métricas offline do split de validação. `GET /model/live-metrics` mostra métricas pós-deploy, calculadas apenas para alunos com `actual_status` igual a `dropout` ou `graduate`.
 
 ---
 
@@ -214,12 +247,16 @@ Todos os endpoints têm prefixo raiz `/`. O frontend os acessa via `/api/*` (rew
 
 | Método | Rota | Descrição |
 |---|---|---|
+| POST | `/predict/dropout` | Predição avulsa ou vinculada a `student_id`; sempre gera log |
 | GET | `/students` | Lista todos os alunos. Aceita `?course_id=` e `?risk_level=` |
-| GET | `/students/{id}` | Detalhe de um aluno com fatores explicativos |
+| GET | `/students/{id}` | Detalhe de um aluno com fatores explicativos; gera log `student_detail` |
+| PATCH | `/students/{id}/status` | Atualiza `actual_status` (`active`, `dropout`, `graduate`) |
 | GET | `/dashboard/professor` | KPIs + lista para a visão professor. Aceita `?course_id=` |
 | GET | `/dashboard/ies` | KPIs + by_course + alertas + trend para visão institucional |
 | GET | `/model/metrics` | Validação do modelo, matriz de confusão e justificativa dos thresholds |
-| GET | `/courses` | Lista de cursos disponíveis |
+| POST | `/model/retrain` | Retreina manualmente, recarrega cache e retorna nova versão |
+| GET | `/model/monitoring` | Drift básico entre base atual e dataset de treino |
+| GET | `/model/live-metrics` | Métricas com feedback real importado |
 | POST | `/upload/csv` | Importa ou atualiza alunos via CSV |
 | GET | `/health` | Health check |
 
@@ -271,10 +308,13 @@ Curricular units 1st sem (enrolled), Curricular units 1st sem (approved), Curric
 Curricular units 2nd sem (enrolled), Curricular units 2nd sem (approved), Curricular units 2nd sem (grade),
 Marital status, Application mode, Application order, Daytime/evening attendance,
 Previous qualification, Displaced, Educational special needs, Gender,
-Unemployment rate, Inflation rate, GDP
+Unemployment rate, Inflation rate, GDP,
+actual_status
 ```
 
 As colunas financeiras e acadêmicas (Debtor, Tuition fees, Curricular units) são as mais relevantes para o modelo.
+
+Para feedback real, o CSV também aceita `actual_status`, `status` ou `situacao`. Valores reconhecidos incluem `active`, `dropout`, `graduate`, `ativo`, `evadido`, `evasão`, `graduado` e `concluído`.
 
 ---
 
@@ -356,5 +396,6 @@ A variável de ambiente `NEXT_PUBLIC_API_URL` deve ser configurada no painel do 
 - **Sem autenticação real**: qualquer pessoa pode acessar qualquer perfil.
 - **Tendência simulada**: o gráfico "Tendência (6 meses)" no dashboard IES usa valores calculados artificialmente a partir do rate atual (`base_rate ± delta`), não dados históricos reais.
 - **SQLite em produção**: adequado para demo, não para produção com múltiplos usuários simultâneos.
-- **Modelo não retreina em produção**: o `.pkl` é gerado no build e fixo até novo deploy.
+- **Retreinamento sem aprovação avançada**: o backend expõe retreinamento manual, mas ainda não há workflow de revisão humana, rollback ou comparação entre versões antes de promover o novo modelo.
+- **Monitoramento de drift simples**: compara estatísticas básicas de features, sem testes estatísticos, janelas temporais ou alerta automático.
 - **Dataset desatualizado**: o dataset de treino é de uma universidade portuguesa com contexto socioeconômico diferente do Brasil.

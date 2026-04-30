@@ -1,13 +1,14 @@
 """Popula o banco com dados fictícios realistas baseados no dataset."""
+import json
 import random
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from database import engine, SessionLocal, Base
-from models import Course, Student
-from ml_model import predict_dropout, features_from_student
+from database import engine, SessionLocal, Base, ensure_schema
+from models import Course, Student, PredictionLog
+from ml_model import predict_dropout, features_from_student, get_model_version
 
 random.seed(42)
 
@@ -117,9 +118,11 @@ def make_student_features(profile: str) -> dict:
 
 def seed():
     Base.metadata.create_all(bind=engine)
+    ensure_schema()
     db = SessionLocal()
 
     # Clear existing data
+    db.query(PredictionLog).delete()
     db.query(Student).delete()
     db.query(Course).delete()
     db.commit()
@@ -150,9 +153,19 @@ def seed():
         db.flush()
 
         # Run prediction
-        result = predict_dropout(features_from_student(student))
+        features = features_from_student(student)
+        result = predict_dropout(features)
         student.risk_score = result["score"]
         student.risk_level = result["risk_level"]
+        db.add(PredictionLog(
+            student_id=student.id,
+            model_version=get_model_version(),
+            risk_score=result["score"],
+            risk_level=result["risk_level"],
+            factors=json.dumps(result["factors"], ensure_ascii=False),
+            features=json.dumps(features, ensure_ascii=False),
+            source="seed",
+        ))
 
     db.commit()
     db.close()

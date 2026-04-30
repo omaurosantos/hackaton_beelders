@@ -1,9 +1,11 @@
 import os
 import json
+import hashlib
 import joblib
 import numpy as np
 import pandas as pd
 from datetime import datetime
+from typing import Optional
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.pipeline import Pipeline
@@ -70,6 +72,32 @@ def _build_model() -> Pipeline:
     ])
 
 
+def resolve_dataset_path(dataset_path: Optional[str] = None) -> str:
+    candidates = [
+        dataset_path,
+        "../dataset.csv",
+        "dataset.csv",
+        "backend/dataset.csv",
+    ]
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    raise FileNotFoundError("dataset.csv not found")
+
+
+def _dataset_hash(dataset_path: str) -> str:
+    digest = hashlib.sha256()
+    with open(dataset_path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _model_version(trained_at: str, dataset_hash: str) -> str:
+    compact = datetime.fromisoformat(trained_at.replace("Z", "")).strftime("%Y%m%d-%H%M%S")
+    return f"lr-{compact}-{dataset_hash[:8]}"
+
+
 def _round_metric(value: float) -> float:
     return round(float(value), 4)
 
@@ -93,14 +121,73 @@ def _classification_metrics(y_true, y_prob, threshold: float) -> dict:
     }
 
 
-def _save_metrics(model: Pipeline, X_test, y_test, dataset_size: int, train_size: int) -> None:
+def _feature_stats_from_df(df: pd.DataFrame) -> dict:
+    stats = {}
+    for col in FEATURE_COLS:
+        series = pd.to_numeric(df[col], errors="coerce")
+        stats[col] = {
+            "mean": _round_metric(series.mean()) if series.notna().any() else None,
+            "std": _round_metric(series.std(ddof=0)) if series.notna().any() else None,
+            "min": _round_metric(series.min()) if series.notna().any() else None,
+            "max": _round_metric(series.max()) if series.notna().any() else None,
+            "missing_rate": _round_metric(series.isna().mean()),
+        }
+    return stats
+
+
+def feature_stats_from_records(records: list[dict]) -> dict:
+    if not records:
+        return {
+            col: {
+                "mean": None,
+                "std": None,
+                "min": None,
+                "max": None,
+                "missing_rate": None,
+            }
+            for col in FEATURE_COLS
+        }
+    return _feature_stats_from_df(pd.DataFrame(records, columns=FEATURE_COLS))
+
+
+def training_feature_stats(dataset_path: Optional[str] = None) -> dict:
+    dataset_path = resolve_dataset_path(dataset_path)
+    df = pd.read_csv(dataset_path)
+    df = df[df["Target"].isin(["Dropout", "Graduate"])].copy()
+    return _feature_stats_from_df(df[FEATURE_COLS])
+
+
+def _save_metrics(
+    model: Pipeline,
+    X_test,
+    y_test,
+    dataset_size: int,
+    train_size: int,
+    dataset_path: str,
+    dataset_hash: str,
+    trained_at: str,
+    model_version: str,
+) -> dict:
     y_prob = model.predict_proba(X_test)[:, 1]
     primary_metrics = _classification_metrics(y_test, y_prob, LOW_RISK_THRESHOLD)
 
     metrics = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": trained_at,
+        "model": {
+            "version": model_version,
+            "trained_at": trained_at,
+            "algorithm": "StandardScaler + LogisticRegression",
+            "features": FEATURE_COLS,
+            "feature_count": len(FEATURE_COLS),
+            "dataset_hash": dataset_hash,
+            "dataset_path": dataset_path,
+            "dataset_rows": dataset_size,
+            "low_risk_threshold": LOW_RISK_THRESHOLD,
+            "high_risk_threshold": HIGH_RISK_THRESHOLD,
+        },
         "dataset": {
-            "source": "dataset.csv",
+            "source": os.path.basename(dataset_path),
+            "path": dataset_path,
             "total_rows_after_filter": dataset_size,
             "train_rows": train_size,
             "test_rows": int(len(y_test)),
@@ -141,9 +228,15 @@ def _save_metrics(model: Pipeline, X_test, y_test, dataset_size: int, train_size
 
     with open(METRICS_PATH, "w", encoding="utf-8") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
+    return metrics
 
 
-def train_model(dataset_path: str = "../dataset.csv") -> None:
+def train_model(dataset_path: Optional[str] = None) -> dict:
+    dataset_path = resolve_dataset_path(dataset_path)
+    dataset_hash = _dataset_hash(dataset_path)
+    trained_at = datetime.utcnow().isoformat() + "Z"
+    model_version = _model_version(trained_at, dataset_hash)
+
     df = pd.read_csv(dataset_path)
     # Keep only Dropout vs Graduate (drop Enrolled for binary classification)
     df = df[df["Target"].isin(["Dropout", "Graduate"])].copy()
@@ -163,17 +256,25 @@ def train_model(dataset_path: str = "../dataset.csv") -> None:
     model = _build_model()
     model.fit(X_train, y_train)
     joblib.dump(model, MODEL_PATH)
-    _save_metrics(model, X_test, y_test, dataset_size=len(df), train_size=len(X_train))
+    metrics = _save_metrics(
+        model,
+        X_test,
+        y_test,
+        dataset_size=len(df),
+        train_size=len(X_train),
+        dataset_path=dataset_path,
+        dataset_hash=dataset_hash,
+        trained_at=trained_at,
+        model_version=model_version,
+    )
     print(f"Model trained and saved to {MODEL_PATH}")
     print(f"Model metrics saved to {METRICS_PATH}")
+    return metrics
 
 
 def load_model():
     if not os.path.exists(MODEL_PATH) or not os.path.exists(METRICS_PATH):
-        dataset_path = "../dataset.csv"
-        if not os.path.exists(dataset_path):
-            dataset_path = "dataset.csv"
-        train_model(dataset_path)
+        train_model()
     return joblib.load(MODEL_PATH)
 
 
@@ -184,7 +285,25 @@ def load_model_metrics() -> dict:
         return json.load(f)
 
 
+def get_model_metadata() -> dict:
+    return load_model_metrics().get("model", {})
+
+
+def get_model_version() -> str:
+    return get_model_metadata().get("version", "unknown")
+
+
 _model = None
+
+
+def reset_model_cache():
+    global _model
+    _model = None
+
+
+def reload_model():
+    reset_model_cache()
+    return get_model()
 
 
 def get_model():
