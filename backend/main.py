@@ -13,6 +13,7 @@ from models import Student, Course, PredictionLog
 from ml_model import (
     LOW_RISK_THRESHOLD,
     FEATURE_COLS,
+    compute_feature_drift,
     feature_stats_from_records,
     features_from_student,
     get_model_version,
@@ -260,48 +261,55 @@ def retrain_model():
 
 @app.get("/model/monitoring")
 def model_monitoring(db: Session = Depends(get_db)):
+    """
+    Feature-level drift detection with type-aware rules.
+
+    Severity levels
+    ---------------
+    ok   – no drift detected
+    warn – moderate shift (z>1.5 continuous / rate delta>0.15 binary / missing>5%)
+    high – strong shift  (z>3.0 continuous / rate delta>0.30 binary / missing>10%)
+
+    reason_code
+    -----------
+    mean_shift_z       – continuous/near_zero feature drifted (z-score based)
+    binary_rate_shift  – binary feature rate changed significantly
+    missing_values     – unexpected missing data in current population
+    """
     students = db.query(Student).all()
-    current_records = [features_from_student(student) for student in students]
+    current_records = [features_from_student(s) for s in students]
     train_stats = training_feature_stats()
     current_stats = feature_stats_from_records(current_records)
 
     features = []
-    alerts = 0
+    alert_count = 0
+    severity_counts = {"ok": 0, "warn": 0, "high": 0}
+
     for col in FEATURE_COLS:
-        train_mean = train_stats[col]["mean"]
-        current_mean = current_stats[col]["mean"]
-        relative_change = None
-        reasons = []
-
-        if train_mean is not None and current_mean is not None:
-            denominator = max(abs(train_mean), 1e-9)
-            relative_change = _round(abs(current_mean - train_mean) / denominator)
-            if relative_change > 0.3:
-                reasons.append("mean_shift")
-
-        missing_rate = current_stats[col]["missing_rate"]
-        if missing_rate is not None and missing_rate > 0.1:
-            reasons.append("missing_values")
-
-        status = "alert" if reasons else "ok"
-        if status == "alert":
-            alerts += 1
+        drift = compute_feature_drift(col, train_stats[col], current_stats[col])
+        if drift["status"] == "alert":
+            alert_count += 1
+        severity_counts[drift["severity"]] += 1
 
         features.append({
             "feature": col,
             "train": train_stats[col],
             "current": current_stats[col],
-            "train_mean": train_mean,
-            "current_mean": current_mean,
-            "relative_mean_change": relative_change,
-            "status": status,
-            "reasons": reasons,
+            **drift,
         })
+
+    overall_severity = (
+        "high" if severity_counts["high"] > 0
+        else "warn" if severity_counts["warn"] > 0
+        else "ok"
+    )
 
     return {
         "model_version": get_model_version(),
         "students_analyzed": len(students),
-        "alerts": alerts,
+        "alerts": alert_count,
+        "overall_severity": overall_severity,
+        "severity_counts": severity_counts,
         "features": features,
     }
 

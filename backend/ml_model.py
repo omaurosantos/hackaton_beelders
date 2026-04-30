@@ -65,6 +65,147 @@ FEATURE_LABELS = {
 }
 
 
+# ── Feature metadata for drift detection ─────────────────────────────────────
+#
+# type:
+#   "binary"     – 0/1 flag; compare rate delta directly (no z-score)
+#   "continuous" – numeric; use z_shift = abs_delta / max(train_std, std_floor)
+#   "near_zero"  – numeric but mean can be near/below zero; same z_shift formula
+#                  but relaxed thresholds to avoid spurious alerts
+#
+# std_floor: minimum effective std to prevent z_shift explosion when training
+#            variance is very small.
+
+FEATURE_META: dict[str, dict] = {
+    # binary
+    "Displaced":                            {"type": "binary"},
+    "Educational special needs":            {"type": "binary"},
+    "Debtor":                               {"type": "binary"},
+    "Tuition fees up to date":              {"type": "binary"},
+    "Daytime/evening attendance":           {"type": "binary"},
+    "Scholarship holder":                   {"type": "binary"},
+    # near-zero (can be negative or close to 0 in Portuguese data)
+    "Inflation rate":                       {"type": "near_zero", "std_floor": 0.5},
+    "GDP":                                  {"type": "near_zero", "std_floor": 0.5},
+    # continuous
+    "Marital status":                       {"type": "continuous", "std_floor": 0.1},
+    "Application mode":                     {"type": "continuous", "std_floor": 1.0},
+    "Application order":                    {"type": "continuous", "std_floor": 0.5},
+    "Previous qualification":               {"type": "continuous", "std_floor": 1.0},
+    "Age at enrollment":                    {"type": "continuous", "std_floor": 1.0},
+    "Curricular units 1st sem (enrolled)":  {"type": "continuous", "std_floor": 0.5},
+    "Curricular units 1st sem (approved)":  {"type": "continuous", "std_floor": 0.5},
+    "Curricular units 1st sem (grade)":     {"type": "continuous", "std_floor": 0.5},
+    "Curricular units 2nd sem (enrolled)":  {"type": "continuous", "std_floor": 0.5},
+    "Curricular units 2nd sem (approved)":  {"type": "continuous", "std_floor": 0.5},
+    "Curricular units 2nd sem (grade)":     {"type": "continuous", "std_floor": 0.5},
+    "Unemployment rate":                    {"type": "continuous", "std_floor": 0.5},
+}
+
+_SEVERITY_RANK = {"ok": 0, "warn": 1, "high": 2}
+
+
+def _max_severity(a: str, b: str) -> str:
+    return a if _SEVERITY_RANK[a] >= _SEVERITY_RANK[b] else b
+
+
+def compute_feature_drift(col: str, train_col_stats: dict, current_col_stats: dict) -> dict:
+    """
+    Compute drift for a single feature using type-appropriate rules.
+
+    Parameters
+    ----------
+    col              : feature column name (key into FEATURE_META)
+    train_col_stats  : stats dict for this column from the training set
+                       {"mean", "std", "min", "max", "missing_rate"}
+    current_col_stats: same shape, from the current student population
+
+    Thresholds
+    ----------
+    binary     : abs(current_rate - train_rate)  → warn >0.15 / high >0.30
+    continuous : z_shift = abs_delta / max(std, std_floor)
+                                                  → warn >1.5  / high >3.0
+    near_zero  : same z_shift, relaxed thresholds → warn >2.0  / high >4.0
+    missing    : missing_rate                     → warn >0.05 / high >0.10
+
+    relative_mean_change is always computed for informational purposes
+    but never triggers an alert.
+
+    Returns
+    -------
+    dict with keys: feature_type, status, severity, reason_code, reasons,
+                    z_shift, abs_delta, binary_rate_delta, relative_change
+    """
+    meta = FEATURE_META.get(col, {"type": "continuous", "std_floor": 0.1})
+    feat_type: str = meta["type"]
+    std_floor: float = meta.get("std_floor", 0.1)
+
+    t = train_col_stats
+    c = current_col_stats
+    train_mean = t["mean"]
+    train_std = t["std"]
+    current_mean = c["mean"]
+    missing_rate = c["missing_rate"]
+
+    reasons: list[str] = []
+    severity = "ok"
+    z_shift: Optional[float] = None
+    abs_delta: Optional[float] = None
+    binary_rate_delta: Optional[float] = None
+    relative_change: Optional[float] = None
+
+    if train_mean is not None and current_mean is not None:
+        abs_delta = round(abs(current_mean - train_mean), 4)
+
+        if feat_type == "binary":
+            binary_rate_delta = abs_delta
+            if binary_rate_delta > 0.30:
+                reasons.append("binary_rate_shift")
+                severity = _max_severity(severity, "high")
+            elif binary_rate_delta > 0.15:
+                reasons.append("binary_rate_shift")
+                severity = _max_severity(severity, "warn")
+
+        else:  # continuous or near_zero
+            eff_std = max(float(train_std or 0), std_floor)
+            z_shift = round(abs_delta / eff_std, 4)
+            warn_z, high_z = (2.0, 4.0) if feat_type == "near_zero" else (1.5, 3.0)
+            if z_shift > high_z:
+                reasons.append("mean_shift_z")
+                severity = _max_severity(severity, "high")
+            elif z_shift > warn_z:
+                reasons.append("mean_shift_z")
+                severity = _max_severity(severity, "warn")
+
+            # Informative only — not used for alerting
+            denom = max(abs(train_mean), 1e-9)
+            relative_change = round(abs_delta / denom, 4)
+
+    # Missing values — applies to all types
+    if missing_rate is not None:
+        if missing_rate > 0.10:
+            reasons.append("missing_values")
+            severity = _max_severity(severity, "high")
+        elif missing_rate > 0.05:
+            reasons.append("missing_values")
+            severity = _max_severity(severity, "warn")
+
+    reason_code = reasons[0] if reasons else None
+    status = "alert" if severity in ("warn", "high") else "ok"
+
+    return {
+        "feature_type": feat_type,
+        "status": status,
+        "severity": severity,
+        "reason_code": reason_code,
+        "reasons": reasons,
+        "z_shift": z_shift,
+        "abs_delta": abs_delta,
+        "binary_rate_delta": binary_rate_delta,
+        "relative_change": relative_change,
+    }
+
+
 def _build_model() -> Pipeline:
     return Pipeline([
         ("scaler", StandardScaler()),
